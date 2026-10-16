@@ -1,0 +1,660 @@
+"""Herramientas reales que JARVIS puede usar. Todas gratuitas y sin llaves.
+
+Las marcadas como `peligrosa` piden tu confirmación antes de ejecutarse.
+"""
+import ast
+import asyncio
+import base64
+import difflib
+import io
+import json
+import math
+import os
+import platform
+import re
+import socket
+import subprocess
+import time
+import urllib.parse
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from html.parser import HTMLParser
+from pathlib import Path
+
+import httpx
+import psutil
+
+from . import config
+
+UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"}
+http = httpx.AsyncClient(timeout=20, follow_redirects=True, headers=UA)
+
+HERRAMIENTAS: dict[str, dict] = {}
+
+
+@dataclass
+class Contexto:
+    router: object
+    memoria: object
+    canal: str = "web"
+    sesion: str = "web"
+    difundir: object = None  # async fn(evento) -> manda a todas las pantallas
+    notificar: object = None  # async fn(texto) -> manda al teléfono (Telegram)
+    extra: dict = field(default_factory=dict)
+
+
+def P(tipo, desc, enum=None, items=None):
+    d = {"type": tipo, "description": desc}
+    if enum:
+        d["enum"] = enum
+    if items:
+        d["items"] = items
+    return d
+
+
+def herramienta(nombre, descripcion, params=None, requeridos=(), peligrosa=False, solo_pc=False):
+    def deco(fn):
+        HERRAMIENTAS[nombre] = {"fn": fn, "desc": descripcion, "params": params or {}, "req": list(requeridos),
+                                "peligrosa": peligrosa, "solo_pc": solo_pc}
+        return fn
+    return deco
+
+
+def disponibles() -> dict:
+    return {k: v for k, v in HERRAMIENTAS.items() if not (v["solo_pc"] and not config.ES_WINDOWS)}
+
+
+def esquemas() -> list:
+    out = []
+    for k, v in disponibles().items():
+        f = {"name": k, "description": v["desc"]}
+        if v["params"]:  # Gemini rechaza objetos sin propiedades: si no hay parámetros se omite
+            f["parameters"] = {"type": "object", "properties": v["params"], "required": v["req"]}
+        out.append({"type": "function", "function": f})
+    return out
+
+
+def es_peligrosa(nombre) -> bool:
+    return HERRAMIENTAS.get(nombre, {}).get("peligrosa", False)
+
+
+async def ejecutar(nombre: str, args: dict, ctx: Contexto) -> str:
+    h = disponibles().get(nombre)
+    if not h:
+        return f"Error: la herramienta '{nombre}' no existe aquí."
+    try:
+        res = await h["fn"](ctx, **{k: v for k, v in args.items() if k in h["params"]})
+    except TypeError as e:
+        return f"Error en los argumentos: {e}"
+    except Exception as e:  # noqa: BLE001
+        return f"Error ejecutando {nombre}: {type(e).__name__}: {e}"
+    if not isinstance(res, str):
+        res = json.dumps(res, ensure_ascii=False, default=str)
+    return res[:9000]
+
+
+def _ps(script: str, timeout=60) -> str:
+    """Corre PowerShell con salida en UTF-8."""
+    pref = "[Console]::OutputEncoding=[Text.Encoding]::UTF8;$ProgressPreference='SilentlyContinue';"
+    cod = base64.b64encode((pref + script).encode("utf-16-le")).decode()
+    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", cod],
+                       capture_output=True, timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    salida = r.stdout.decode("utf-8", "replace").strip()
+    err = r.stderr.decode("utf-8", "replace").strip()
+    if err and r.returncode != 0:
+        salida += ("\n" if salida else "") + "[error] " + err[:2000]
+    return salida or f"(sin salida, código {r.returncode})"
+
+
+# ======================= tiempo y ubicación =======================
+
+_ubic = {}
+
+
+async def ubicacion() -> dict:
+    if _ubic:
+        return _ubic
+    ciudad = config.env("CIUDAD")
+    if ciudad:
+        g = await geocodificar(ciudad)
+        if g:
+            _ubic.update(g)
+            return _ubic
+    try:
+        r = await http.get("http://ip-api.com/json/?lang=es&fields=city,regionName,country,lat,lon,timezone")
+        d = r.json()
+        _ubic.update({"ciudad": d.get("city"), "region": d.get("regionName"), "pais": d.get("country"), "lat": d.get("lat"), "lon": d.get("lon")})
+    except (httpx.HTTPError, ValueError):
+        pass
+    return _ubic
+
+
+async def geocodificar(nombre: str) -> dict | None:
+    r = await http.get("https://geocoding-api.open-meteo.com/v1/search", params={"name": nombre, "count": 1, "language": "es"})
+    res = (r.json().get("results") or [None])[0]
+    if not res:
+        return None
+    return {"ciudad": res["name"], "region": res.get("admin1"), "pais": res.get("country"), "lat": res["latitude"], "lon": res["longitude"]}
+
+
+DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+def fecha_legible(dt: datetime | None = None) -> str:
+    dt = dt or datetime.now()
+    return f"{DIAS[dt.weekday()]} {dt.day} de {MESES[dt.month - 1]} de {dt.year}, {dt:%H:%M}"
+
+
+@herramienta("fecha_hora", "Fecha y hora actuales, o cuánto falta para una fecha.",
+             {"hasta": P("string", "Fecha ISO opcional (AAAA-MM-DD) para calcular cuánto falta")})
+async def fecha_hora(ctx, hasta=None):
+    ahora = datetime.now()
+    txt = f"Ahora: {fecha_legible(ahora)}"
+    if hasta:
+        d = datetime.fromisoformat(hasta) - ahora
+        txt += f". Faltan {d.days} días y {d.seconds // 3600} horas para {hasta}."
+    return txt
+
+
+CODIGOS_CLIMA = {0: "despejado", 1: "mayormente despejado", 2: "parcialmente nublado", 3: "nublado", 45: "niebla", 48: "niebla con escarcha",
+                 51: "llovizna ligera", 53: "llovizna", 55: "llovizna intensa", 61: "lluvia ligera", 63: "lluvia", 65: "lluvia fuerte",
+                 71: "nieve ligera", 73: "nieve", 75: "nieve fuerte", 80: "chubascos ligeros", 81: "chubascos", 82: "chubascos violentos",
+                 95: "tormenta eléctrica", 96: "tormenta con granizo", 99: "tormenta fuerte con granizo"}
+
+
+@herramienta("clima", "Clima actual y pronóstico de los próximos días (Open-Meteo).",
+             {"ciudad": P("string", "Ciudad; si se omite se usa la ubicación del usuario"), "dias": P("integer", "Días de pronóstico (1-7)")})
+async def clima(ctx, ciudad=None, dias=3):
+    u = await geocodificar(ciudad) if ciudad else await ubicacion()
+    if not u or u.get("lat") is None:
+        return "No pude determinar la ubicación."
+    r = await http.get("https://api.open-meteo.com/v1/forecast", params={
+        "latitude": u["lat"], "longitude": u["lon"], "timezone": "auto", "forecast_days": max(1, min(int(dias or 3), 7)),
+        "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation",
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset"})
+    d = r.json()
+    c = d["current"]
+    lineas = [f"{u['ciudad']}, {u.get('pais', '')}: {c['temperature_2m']}°C (sensación {c['apparent_temperature']}°C), "
+              f"{CODIGOS_CLIMA.get(c['weather_code'], 'variable')}, humedad {c['relative_humidity_2m']}%, viento {c['wind_speed_10m']} km/h."]
+    dd = d["daily"]
+    for i, f in enumerate(dd["time"]):
+        lineas.append(f"{f}: {CODIGOS_CLIMA.get(dd['weather_code'][i], 'variable')}, {dd['temperature_2m_min'][i]}–{dd['temperature_2m_max'][i]}°C, "
+                      f"lluvia {dd['precipitation_probability_max'][i]}%, UV {dd['uv_index_max'][i]}")
+    return "\n".join(lineas)
+
+
+# ======================= internet =======================
+
+class _Texto(HTMLParser):
+    SALTAR = {"script", "style", "noscript", "svg", "nav", "footer", "header", "form", "aside"}
+
+    def __init__(self):
+        super().__init__()
+        self.partes, self.saltando, self.titulo, self._en_titulo = [], 0, "", False
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SALTAR:
+            self.saltando += 1
+        if tag == "title":
+            self._en_titulo = True
+        if tag in ("p", "br", "li", "h1", "h2", "h3", "h4", "tr", "div"):
+            self.partes.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in self.SALTAR and self.saltando:
+            self.saltando -= 1
+        if tag == "title":
+            self._en_titulo = False
+
+    def handle_data(self, data):
+        if self._en_titulo:
+            self.titulo += data
+        elif not self.saltando:
+            self.partes.append(data)
+
+
+def html_a_texto(html: str) -> tuple[str, str]:
+    p = _Texto()
+    p.feed(html)
+    txt = re.sub(r"[ \t]+", " ", "".join(p.partes))
+    txt = re.sub(r"\n\s*\n+", "\n", txt).strip()
+    return p.titulo.strip(), txt
+
+
+@herramienta("buscar_web", "Busca en internet (DuckDuckGo). Úsala para cualquier dato actual o que no sepas con certeza.",
+             {"consulta": P("string", "Qué buscar"), "cantidad": P("integer", "Número de resultados (máx 10)")}, ["consulta"])
+async def buscar_web(ctx, consulta, cantidad=6):
+    cantidad = max(1, min(int(cantidad or 6), 10))
+    try:
+        from ddgs import DDGS
+
+        res = await asyncio.to_thread(lambda: list(DDGS().text(consulta, region="es-es", max_results=cantidad)))
+        if res:
+            return "\n\n".join(f"{i + 1}. {r.get('title')}\n{r.get('href')}\n{r.get('body')}" for i, r in enumerate(res))
+    except Exception:  # noqa: BLE001
+        pass
+    r = await http.post("https://html.duckduckgo.com/html/", data={"q": consulta})
+    bloques = re.findall(r'class="result__a" href="([^"]+)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</a>', r.text, re.S)
+    limpiar = lambda s: re.sub(r"<.*?>", "", s).strip()  # noqa: E731
+    out = []
+    for i, (url, tit, snip) in enumerate(bloques[:cantidad]):
+        if "uddg=" in url:
+            url = urllib.parse.unquote(url.split("uddg=")[1].split("&")[0])
+        out.append(f"{i + 1}. {limpiar(tit)}\n{url}\n{limpiar(snip)}")
+    return "\n\n".join(out) or "Sin resultados."
+
+
+@herramienta("leer_web", "Descarga una página web y devuelve su texto principal.",
+             {"url": P("string", "Dirección completa"), "max_caracteres": P("integer", "Límite de texto (por defecto 6000)")}, ["url"])
+async def leer_web(ctx, url, max_caracteres=6000):
+    r = await http.get(url)
+    tipo = r.headers.get("content-type", "")
+    if "html" not in tipo and "text" not in tipo and "json" not in tipo:
+        return f"El recurso es de tipo {tipo}, no es texto."
+    titulo, txt = html_a_texto(r.text) if "html" in tipo else ("", r.text)
+    return f"# {titulo}\n{txt[: int(max_caracteres or 6000)]}"
+
+
+@herramienta("noticias", "Titulares de noticias recientes (Google News), generales o sobre un tema.",
+             {"tema": P("string", "Tema opcional"), "cantidad": P("integer", "Cuántas (por defecto 8)")})
+async def noticias(ctx, tema=None, cantidad=8):
+    pais = config.env("PAIS", "CO")
+    params = f"hl=es-419&gl={pais}&ceid={pais}:es-419"
+    url = f"https://news.google.com/rss/search?q={urllib.parse.quote(tema)}&{params}" if tema else f"https://news.google.com/rss?{params}"
+    r = await http.get(url)
+    raiz = ET.fromstring(r.content)
+    items = raiz.findall(".//item")[: int(cantidad or 8)]
+    return "\n".join(f"- {i.findtext('title')} ({i.findtext('pubDate', '')[:16]})" for i in items) or "Sin noticias."
+
+
+@herramienta("wikipedia", "Resumen de un tema en Wikipedia en español.", {"tema": P("string", "Tema a consultar")}, ["tema"])
+async def wikipedia(ctx, tema):
+    r = await http.get("https://es.wikipedia.org/w/api.php", params={"action": "opensearch", "search": tema, "limit": 1, "format": "json"})
+    titulos = r.json()[1]
+    if not titulos:
+        return "No encontré ese tema en Wikipedia."
+    s = await http.get(f"https://es.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(titulos[0])}")
+    d = s.json()
+    return f"{d.get('title')}: {d.get('extract')}\n{d.get('content_urls', {}).get('desktop', {}).get('page', '')}"
+
+
+# ======================= cálculo =======================
+
+_SEGURO = {k: getattr(math, k) for k in dir(math) if not k.startswith("_")}
+_SEGURO.update({"abs": abs, "round": round, "min": min, "max": max, "sum": sum})
+
+
+def _evaluar(nodo):
+    if isinstance(nodo, ast.Expression):
+        return _evaluar(nodo.body)
+    if isinstance(nodo, ast.Constant) and isinstance(nodo.value, (int, float)):
+        return nodo.value
+    if isinstance(nodo, ast.BinOp):
+        a, b = _evaluar(nodo.left), _evaluar(nodo.right)
+        ops = {ast.Add: lambda: a + b, ast.Sub: lambda: a - b, ast.Mult: lambda: a * b, ast.Div: lambda: a / b,
+               ast.Pow: lambda: a ** b if abs(b) < 1000 else math.inf, ast.Mod: lambda: a % b, ast.FloorDiv: lambda: a // b}
+        return ops[type(nodo.op)]()
+    if isinstance(nodo, ast.UnaryOp):
+        v = _evaluar(nodo.operand)
+        return -v if isinstance(nodo.op, ast.USub) else v
+    if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name) and nodo.func.id in _SEGURO:
+        return _SEGURO[nodo.func.id](*[_evaluar(a) for a in nodo.args])
+    if isinstance(nodo, ast.Name) and nodo.id in _SEGURO:
+        return _SEGURO[nodo.id]
+    if isinstance(nodo, (ast.List, ast.Tuple)):
+        return [_evaluar(e) for e in nodo.elts]
+    raise ValueError("expresión no permitida")
+
+
+@herramienta("calcular", "Calcula una expresión matemática exacta (usa sintaxis Python: sqrt, sin, log, pi, **).",
+             {"expresion": P("string", "Por ejemplo: sqrt(2)*15**2/7")}, ["expresion"])
+async def calcular(ctx, expresion):
+    return f"{expresion} = {_evaluar(ast.parse(expresion.replace('^', '**'), mode='eval'))}"
+
+
+# ======================= memoria =======================
+
+@herramienta("recordar", "Guarda un dato duradero sobre el usuario o algo que pidió recordar.",
+             {"dato": P("string", "El dato, en tercera persona y autocontenido")}, ["dato"])
+async def recordar(ctx, dato):
+    i = ctx.memoria.recordar(dato)
+    return f"Guardado en memoria (#{i})." if i else "Ya lo tenía registrado."
+
+
+@herramienta("buscar_memoria", "Busca en la memoria a largo plazo lo que se sabe del usuario.", {"consulta": P("string", "Qué buscar")}, ["consulta"])
+async def buscar_memoria(ctx, consulta):
+    res = ctx.memoria.buscar(consulta) or ctx.memoria.hechos(15)
+    return "\n".join(f"#{h['id']}: {h['texto']}" for h in res) or "Memoria vacía."
+
+
+@herramienta("olvidar", "Borra un dato de la memoria por su número.", {"id": P("integer", "Número del dato")}, ["id"])
+async def olvidar(ctx, id):  # noqa: A002
+    return "Olvidado." if ctx.memoria.olvidar(int(id)) else "No existe ese dato."
+
+
+# ======================= recordatorios =======================
+
+@herramienta("crear_recordatorio", "Programa un recordatorio o temporizador. Avisa por voz en pantalla y al teléfono.",
+             {"texto": P("string", "Qué recordar"), "en_minutos": P("number", "Dentro de cuántos minutos"),
+              "fecha_hora": P("string", "Momento exacto ISO local (AAAA-MM-DDTHH:MM) si no se usa en_minutos")}, ["texto"])
+async def crear_recordatorio(ctx, texto, en_minutos=None, fecha_hora=None):
+    if fecha_hora:
+        vence = datetime.fromisoformat(fecha_hora)
+    else:
+        vence = datetime.now() + timedelta(minutes=float(en_minutos or 5))
+    i = ctx.memoria.crear_recordatorio(texto, vence.timestamp(), ctx.canal)
+    return f"Recordatorio #{i} para {fecha_legible(vence)}: {texto}"
+
+
+@herramienta("listar_recordatorios", "Lista los recordatorios pendientes.")
+async def listar_recordatorios(ctx):
+    rs = ctx.memoria.recordatorios()
+    return "\n".join(f"#{r['id']} {fecha_legible(datetime.fromtimestamp(r['vence']))}: {r['texto']}" for r in rs) or "No hay recordatorios pendientes."
+
+
+@herramienta("cancelar_recordatorio", "Cancela un recordatorio por su número.", {"id": P("integer", "Número")}, ["id"])
+async def cancelar_recordatorio(ctx, id):  # noqa: A002
+    return "Cancelado." if ctx.memoria.cancelar_recordatorio(int(id)) else "No encontré ese recordatorio."
+
+
+# ======================= el PC =======================
+
+def _bytes(n):
+    for u in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{n:.1f} {u}"
+        n /= 1024
+    return f"{n:.1f} PB"
+
+
+def metricas() -> dict:
+    vm = psutil.virtual_memory()
+    try:
+        disco = psutil.disk_usage("C:\\" if config.ES_WINDOWS else "/").percent
+    except OSError:
+        disco = None
+    bat = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
+    red = psutil.net_io_counters()
+    return {"cpu": psutil.cpu_percent(interval=None), "ram": vm.percent, "ram_usada": _bytes(vm.used), "ram_total": _bytes(vm.total),
+            "disco": disco, "bateria": bat.percent if bat else None, "enchufado": bat.power_plugged if bat else None,
+            "red_tx": red.bytes_sent, "red_rx": red.bytes_recv, "arranque": psutil.boot_time()}
+
+
+@herramienta("estado_sistema", "Estado del computador: CPU, RAM, disco, batería, temperatura y procesos que más consumen.")
+async def estado_sistema(ctx):
+    m = metricas()
+    procs = []
+    for p in psutil.process_iter(["name", "memory_info"]):
+        try:
+            procs.append((p.info["memory_info"].rss, p.info["name"]))
+        except (psutil.Error, TypeError, AttributeError):
+            pass
+    top = ", ".join(f"{n} ({_bytes(r)})" for r, n in sorted(procs, reverse=True)[:6])
+    horas = (time.time() - m["arranque"]) / 3600
+    bat = f", batería {m['bateria']:.0f}% ({'cargando' if m['enchufado'] else 'descargando'})" if m["bateria"] is not None else ""
+    return (f"{platform.node()} · {platform.system()} {platform.release()}. CPU {psutil.cpu_percent(interval=0.5)}% de {psutil.cpu_count()} hilos, "
+            f"RAM {m['ram']}% ({m['ram_usada']} de {m['ram_total']}), disco {m['disco']}%{bat}. Encendido hace {horas:.1f} h. Más RAM: {top}")
+
+
+def _accesos_directos() -> dict[str, Path]:
+    rutas = [Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs",
+             Path(os.environ.get("PROGRAMDATA", "")) / "Microsoft/Windows/Start Menu/Programs",
+             Path.home() / "Desktop", Path(os.environ.get("PUBLIC", "")) / "Desktop"]
+    out = {}
+    for r in rutas:
+        if r.exists():
+            for f in list(r.rglob("*.lnk")) + list(r.rglob("*.url")):
+                out.setdefault(f.stem.lower(), f)
+    return out
+
+
+ALIAS = {"bloc de notas": "notepad", "notas": "notepad", "calculadora": "calc", "explorador": "explorer", "archivos": "explorer",
+         "configuracion": "ms-settings:", "configuración": "ms-settings:", "terminal": "wt", "cmd": "cmd", "powershell": "powershell",
+         "paint": "mspaint", "administrador de tareas": "taskmgr", "vscode": "code", "visual studio code": "code",
+         "youtube": "https://youtube.com", "gmail": "https://mail.google.com", "whatsapp": "https://web.whatsapp.com",
+         "chatgpt": "https://chatgpt.com", "github": "https://github.com", "spotify": "spotify:"}
+
+
+@herramienta("abrir", "Abre un programa, archivo, carpeta o página web en el PC (por nombre aproximado, ruta o URL).",
+             {"objetivo": P("string", "Ej: 'spotify', 'notion', 'https://...', 'C:/Users/...'")}, ["objetivo"], solo_pc=True)
+async def abrir(ctx, objetivo):
+    o = objetivo.strip()
+    clave = o.lower()
+    destino = ALIAS.get(clave, o)
+    if re.match(r"^[a-z][\w+.-]*:", destino) and not re.match(r"^[a-z]:[\\/]", destino, re.I):
+        os.startfile(destino)  # URL o protocolo
+        return f"Abierto {destino}"
+    if Path(destino).exists():
+        os.startfile(destino)
+        return f"Abierto {destino}"
+    accesos = _accesos_directos()
+    candidato = accesos.get(clave) or next((v for k, v in accesos.items() if clave in k), None)
+    if not candidato:
+        cerca = difflib.get_close_matches(clave, accesos.keys(), n=1, cutoff=0.55)
+        candidato = accesos[cerca[0]] if cerca else None
+    if candidato:
+        os.startfile(str(candidato))
+        return f"Abierto {candidato.stem}"
+    try:
+        subprocess.Popen(["cmd", "/c", "start", "", destino], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return f"Intenté abrir '{destino}'."
+    except OSError as e:
+        return f"No encontré '{objetivo}': {e}"
+
+
+TECLAS = {"play_pausa": 0xB3, "siguiente": 0xB0, "anterior": 0xB1, "detener": 0xB2, "silenciar": 0xAD, "bajar_volumen": 0xAE, "subir_volumen": 0xAF}
+
+
+@herramienta("multimedia", "Controla música/volumen del PC: play_pausa, siguiente, anterior, detener, silenciar, subir_volumen, bajar_volumen.",
+             {"accion": P("string", "Acción", list(TECLAS)), "veces": P("integer", "Repeticiones (para volumen, cada una ≈2%)")}, ["accion"], solo_pc=True)
+async def multimedia(ctx, accion, veces=1):
+    import ctypes
+
+    vk = TECLAS[accion]
+    for _ in range(max(1, min(int(veces or 1), 50))):
+        ctypes.windll.user32.keybd_event(vk, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(vk, 0, 2, 0)
+    return f"Hecho: {accion} x{veces}"
+
+
+@herramienta("ver_pantalla", "Toma una captura de la pantalla del PC y la analiza con una IA con visión. Úsala si el usuario dice 'mira', 'qué ves', 'ayúdame con esto'.",
+             {"pregunta": P("string", "Qué quiere saber el usuario sobre la pantalla")}, ["pregunta"], solo_pc=True)
+async def ver_pantalla(ctx, pregunta):
+    from PIL import ImageGrab
+
+    img = await asyncio.to_thread(ImageGrab.grab)
+    img.thumbnail((1600, 1600))
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, "JPEG", quality=80)
+    url = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    msgs = [{"role": "system", "content": "Eres los ojos de un asistente. Describe con precisión y en español lo relevante de la captura de pantalla para responder la pregunta. Transcribe textos, errores o código importantes."},
+            {"role": "user", "content": [{"type": "text", "text": pregunta}, {"type": "image_url", "image_url": {"url": url}}]}]
+    return "Lo que se ve en pantalla: " + await ctx.router.completar(msgs, nivel="inteligente", vision=True)
+
+
+@herramienta("portapapeles", "Lee o escribe el portapapeles del PC.",
+             {"accion": P("string", "leer o escribir", ["leer", "escribir"]), "texto": P("string", "Texto a copiar (si es escribir)")}, ["accion"], solo_pc=True)
+async def portapapeles(ctx, accion, texto=""):
+    if accion == "leer":
+        return (await asyncio.to_thread(_ps, "Get-Clipboard -Raw"))[:6000]
+    b64 = base64.b64encode(texto.encode()).decode()
+    await asyncio.to_thread(_ps, f"Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{b64}')))")
+    return "Copiado al portapapeles."
+
+
+@herramienta("ejecutar_comando", "Ejecuta un comando de PowerShell (o bash en Linux) y devuelve la salida. Para tareas avanzadas del sistema.",
+             {"comando": P("string", "Comando a ejecutar"), "timeout": P("integer", "Segundos máximos (por defecto 60)")}, ["comando"], peligrosa=True)
+async def ejecutar_comando(ctx, comando, timeout=60):
+    t = max(5, min(int(timeout or 60), 600))
+    if config.ES_WINDOWS:
+        return await asyncio.to_thread(_ps, comando, t)
+    r = await asyncio.to_thread(subprocess.run, ["bash", "-lc", comando], capture_output=True, text=True, timeout=t)
+    return (r.stdout + ("\n[error] " + r.stderr if r.stderr else ""))[:8000] or f"(sin salida, código {r.returncode})"
+
+
+@herramienta("listar_archivos", "Lista el contenido de una carpeta.", {"ruta": P("string", "Carpeta (por defecto el escritorio)")})
+async def listar_archivos(ctx, ruta=None):
+    p = Path(os.path.expandvars(os.path.expanduser(ruta or "~/Desktop")))
+    if not p.exists():
+        return "No existe esa ruta."
+    filas = []
+    for f in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))[:200]:
+        try:
+            filas.append(f"{'[DIR] ' if f.is_dir() else ''}{f.name}" + ("" if f.is_dir() else f" ({_bytes(f.stat().st_size)})"))
+        except OSError:
+            pass
+    return f"{p}:\n" + "\n".join(filas)
+
+
+@herramienta("leer_archivo", "Lee un archivo de texto del PC.", {"ruta": P("string", "Ruta del archivo")}, ["ruta"])
+async def leer_archivo(ctx, ruta):
+    p = Path(os.path.expandvars(os.path.expanduser(ruta)))
+    return p.read_text(encoding="utf-8", errors="replace")[:8000]
+
+
+@herramienta("escribir_archivo", "Crea o sobrescribe un archivo de texto en el PC.",
+             {"ruta": P("string", "Ruta del archivo"), "contenido": P("string", "Contenido completo")}, ["ruta", "contenido"], peligrosa=True)
+async def escribir_archivo(ctx, ruta, contenido):
+    p = Path(os.path.expandvars(os.path.expanduser(ruta)))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(contenido, encoding="utf-8")
+    return f"Escrito {p} ({len(contenido)} caracteres)."
+
+
+@herramienta("energia", "Bloquear, suspender, apagar o reiniciar el PC (apagar/reiniciar esperan 60 s; 'cancelar' lo detiene).",
+             {"accion": P("string", "Acción", ["bloquear", "suspender", "apagar", "reiniciar", "cancelar"])}, ["accion"], peligrosa=True, solo_pc=True)
+async def energia(ctx, accion):
+    cmds = {"bloquear": ["rundll32.exe", "user32.dll,LockWorkStation"], "suspender": ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
+            "apagar": ["shutdown", "/s", "/t", "60"], "reiniciar": ["shutdown", "/r", "/t", "60"], "cancelar": ["shutdown", "/a"]}
+    subprocess.Popen(cmds[accion])
+    return f"Acción '{accion}' enviada."
+
+
+# ======================= servidor CasaOS =======================
+
+def _ssh_base() -> list[str] | None:
+    host, usuario = config.env("SERVIDOR_HOST"), config.env("SERVIDOR_USUARIO")
+    if not host or not usuario:
+        return None
+    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=accept-new",
+            "-p", config.env("SERVIDOR_PUERTO_SSH", "22"), f"{usuario}@{host}"]
+
+
+@herramienta("servidor_estado", "Revisa el servidor casero CasaOS: si está encendido, latencia, y (con SSH) carga, RAM, disco y contenedores Docker.")
+async def servidor_estado(ctx):
+    host = config.env("SERVIDOR_HOST")
+    if not host:
+        return "No hay servidor configurado (SERVIDOR_HOST en .env)."
+    t0 = time.time()
+    try:
+        with socket.create_connection((host, int(config.env("SERVIDOR_PUERTO_WEB", "80"))), timeout=3):
+            pass
+        vivo = f"En línea ({(time.time() - t0) * 1000:.0f} ms)."
+    except OSError:
+        return f"El servidor {host} no responde. Si tienes SERVIDOR_MAC configurada puedo encenderlo con Wake-on-LAN."
+    base = _ssh_base()
+    if not base:
+        return vivo + " (Configura SERVIDOR_USUARIO y una llave SSH para ver más detalle.)"
+    cmd = "uptime; free -h | head -2; df -h / | tail -1; docker ps --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -30"
+    r = await asyncio.to_thread(subprocess.run, base + [cmd], capture_output=True, text=True, timeout=25)
+    return vivo + "\n" + (r.stdout or r.stderr)[:5000]
+
+
+@herramienta("servidor_comando", "Ejecuta un comando por SSH en el servidor CasaOS.", {"comando": P("string", "Comando bash")}, ["comando"], peligrosa=True)
+async def servidor_comando(ctx, comando):
+    base = _ssh_base()
+    if not base:
+        return "Falta SERVIDOR_HOST / SERVIDOR_USUARIO en .env."
+    r = await asyncio.to_thread(subprocess.run, base + [comando], capture_output=True, text=True, timeout=120)
+    return (r.stdout + ("\n[error] " + r.stderr if r.stderr else ""))[:8000] or "(sin salida)"
+
+
+@herramienta("servidor_encender", "Enciende el servidor casero con Wake-on-LAN.")
+async def servidor_encender(ctx):
+    mac = config.env("SERVIDOR_MAC").replace(":", "").replace("-", "")
+    if len(mac) != 12:
+        return "Configura SERVIDOR_MAC en .env (y activa Wake-on-LAN en la BIOS del servidor)."
+    paquete = bytes.fromhex("FF" * 6 + mac * 16)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        s.sendto(paquete, ("255.255.255.255", 9))
+    return "Paquete mágico enviado. Debería arrancar en un minuto."
+
+
+# ======================= protocolos (macros) =======================
+
+PROTOCOLOS = config.DATOS / "protocolos.json"
+PROTOCOLOS_BASE = {
+    "trabajo": {"descripcion": "Abre las herramientas de trabajo", "pasos": [{"abrir": "visual studio code"}, {"abrir": "notion"}, {"abrir": "https://github.com"}]},
+    "concentracion": {"descripcion": "Música para concentrarse y silencio de distracciones", "pasos": [{"abrir": "https://www.youtube.com/results?search_query=lofi+hip+hop+radio"}]},
+    "fiesta": {"descripcion": "Volumen arriba y música", "pasos": [{"multimedia": "subir_volumen", "veces": 15}, {"abrir": "spotify"}]},
+}
+
+
+def _protocolos() -> dict:
+    if not PROTOCOLOS.exists():
+        PROTOCOLOS.write_text(json.dumps(PROTOCOLOS_BASE, ensure_ascii=False, indent=2), encoding="utf-8")
+    return json.loads(PROTOCOLOS.read_text(encoding="utf-8"))
+
+
+@herramienta("protocolos", "Lista los protocolos (macros) disponibles, como 'protocolo trabajo'.")
+async def protocolos(ctx):
+    return "\n".join(f"- {k}: {v['descripcion']} ({len(v['pasos'])} pasos)" for k, v in _protocolos().items())
+
+
+@herramienta("ejecutar_protocolo", "Ejecuta un protocolo (macro) por su nombre.", {"nombre": P("string", "Nombre del protocolo")}, ["nombre"])
+async def ejecutar_protocolo(ctx, nombre):
+    todos = _protocolos()
+    clave = difflib.get_close_matches(nombre.lower(), todos.keys(), n=1, cutoff=0.4)
+    if not clave:
+        return f"No existe el protocolo '{nombre}'. Disponibles: {', '.join(todos)}"
+    hechos = []
+    for paso in todos[clave[0]]["pasos"]:
+        if "abrir" in paso:
+            hechos.append(await ejecutar("abrir", {"objetivo": paso["abrir"]}, ctx))
+        elif "multimedia" in paso:
+            hechos.append(await ejecutar("multimedia", {"accion": paso["multimedia"], "veces": paso.get("veces", 1)}, ctx))
+        elif "comando" in paso:
+            hechos.append(await ejecutar_comando(ctx, paso["comando"]))
+        elif "esperar" in paso:
+            await asyncio.sleep(float(paso["esperar"]))
+    return f"Protocolo {clave[0]} ejecutado: " + " | ".join(hechos)
+
+
+@herramienta("crear_protocolo", "Crea o reemplaza un protocolo. Pasos: lista de objetos {abrir: 'x'} | {multimedia: 'accion', veces: n} | {comando: 'powershell'} | {esperar: segundos}.",
+             {"nombre": P("string", "Nombre corto"), "descripcion": P("string", "Para qué sirve"),
+              "pasos": P("string", "JSON con la lista de pasos, ej: [{\"abrir\": \"spotify\"}, {\"esperar\": 2}]")}, ["nombre", "descripcion", "pasos"], peligrosa=True)
+async def crear_protocolo(ctx, nombre, descripcion, pasos):
+    if isinstance(pasos, str):
+        pasos = json.loads(pasos)
+    todos = _protocolos()
+    todos[nombre.lower()] = {"descripcion": descripcion, "pasos": pasos}
+    PROTOCOLOS.write_text(json.dumps(todos, ensure_ascii=False, indent=2), encoding="utf-8")
+    return f"Protocolo '{nombre}' guardado con {len(pasos)} pasos."
+
+
+# ======================= meta =======================
+
+@herramienta("estado_ia", "Muestra qué proveedores de IA gratis están disponibles, cuáles están en enfriamiento y el consumo de hoy.")
+async def estado_ia(ctx):
+    e = ctx.router.estado()
+    lineas = [f"Estrategia: {e['estrategia']}. {e['libres']}/{e['total']} ranuras libres."]
+    for p in e["proveedores"]:
+        if not p["configurado"]:
+            continue
+        extra = f", próximo libre en {int(p['proximo'] // 60)} min ({p['motivo']})" if p["libres"] < p["ranuras"] else ""
+        lineas.append(f"- {p['nombre']}: {p['libres']}/{p['ranuras']} libres, {p['peticiones_dia']} peticiones y ~{p['tokens_dia']} tokens hoy{extra}")
+    faltan = [p["nombre"] for p in e["proveedores"] if not p["configurado"]]
+    if faltan:
+        lineas.append("Sin configurar: " + ", ".join(faltan))
+    return "\n".join(lineas)
+
+
+@herramienta("enviar_al_telefono", "Envía un mensaje al teléfono del usuario por Telegram.", {"mensaje": P("string", "Texto")}, ["mensaje"])
+async def enviar_al_telefono(ctx, mensaje):
+    if not ctx.notificar:
+        return "Telegram no está configurado."
+    ok = await ctx.notificar(mensaje)
+    return "Enviado al teléfono." if ok else "No se pudo enviar (revisa TELEGRAM_TOKEN y TELEGRAM_USUARIOS)."

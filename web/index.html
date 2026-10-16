@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S.</title>
+<link rel="icon" href="/static/jarvis.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/estilo.css">
+</head>
+<body>
+<canvas id="fondo"></canvas>
+
+<!-- secuencia de arranque: el clic también desbloquea el audio del navegador -->
+<div id="arranque">
+  <div class="arranque-centro">
+    <div class="logo-arranque">J.A.R.V.I.S.</div>
+    <div class="sub-arranque">Just A Rather Very Intelligent System · núcleo local</div>
+    <pre id="log-arranque"></pre>
+    <button id="btn-iniciar" class="btn-iniciar" disabled>INICIALIZANDO…</button>
+  </div>
+</div>
+
+<header class="barra-sup">
+  <div class="marca"><span class="punto-vivo"></span>J.A.R.V.I.S. <small id="sub-marca">EN LÍNEA</small></div>
+  <div class="centro-sup">
+    <div id="reloj">--:--:--</div>
+    <div id="fecha"></div>
+  </div>
+  <div class="acciones-sup">
+    <button id="btn-silencio" class="icono" title="Voz de JARVIS (activar/silenciar)"></button>
+    <button id="btn-config" class="icono" title="Ajustes"></button>
+  </div>
+</header>
+
+<main class="rejilla">
+  <aside class="col izq">
+    <section class="tarjeta">
+      <h3><span>SISTEMA</span><i id="nombre-pc"></i></h3>
+      <div class="medidores">
+        <div class="medidor" data-k="cpu"><svg viewBox="0 0 100 100"><circle class="pista" cx="50" cy="50" r="42"/><circle class="valor" cx="50" cy="50" r="42"/></svg><b>--</b><span>CPU</span></div>
+        <div class="medidor" data-k="ram"><svg viewBox="0 0 100 100"><circle class="pista" cx="50" cy="50" r="42"/><circle class="valor" cx="50" cy="50" r="42"/></svg><b>--</b><span>RAM</span></div>
+        <div class="medidor" data-k="disco"><svg viewBox="0 0 100 100"><circle class="pista" cx="50" cy="50" r="42"/><circle class="valor" cx="50" cy="50" r="42"/></svg><b>--</b><span>DISCO</span></div>
+        <div class="medidor" data-k="bateria"><svg viewBox="0 0 100 100"><circle class="pista" cx="50" cy="50" r="42"/><circle class="valor" cx="50" cy="50" r="42"/></svg><b>--</b><span>ENERGÍA</span></div>
+      </div>
+      <div class="fila-red"><span>▲ <b id="subida">0</b></span><span>▼ <b id="bajada">0</b></span><span>⏱ <b id="encendido">-</b></span></div>
+    </section>
+
+    <section class="tarjeta tarjeta-ia">
+      <h3><span>MATRIZ NEURONAL</span><i id="resumen-ia">-</i></h3>
+      <div class="estrategias" id="estrategias">
+        <button data-e="equilibrio" title="Reparte la carga entre todas las IAs para que ninguna cuota se agote">Equilibrio</button>
+        <button data-e="calidad" title="Siempre el mejor modelo disponible">Calidad</button>
+        <button data-e="velocidad" title="El que responda más rápido">Velocidad</button>
+      </div>
+      <div id="proveedores"></div>
+    </section>
+  </aside>
+
+  <section class="col centro">
+    <div class="reactor-caja">
+      <canvas id="reactor"></canvas>
+      <div id="estado" class="estado">EN ESPERA</div>
+    </div>
+    <div id="subtitulo" class="subtitulo"></div>
+    <div id="sugerencias" class="sugerencias"></div>
+  </section>
+
+  <aside class="col der">
+    <section class="tarjeta tarjeta-chat">
+      <h3><span>REGISTRO DE CONVERSACIÓN</span><i id="btn-nueva" class="enlace" title="Empezar una conversación nueva">NUEVA</i></h3>
+      <div id="chat"></div>
+    </section>
+  </aside>
+</main>
+
+<footer class="barra-inf">
+  <button id="btn-mic" class="mic" title="Hablar (Ctrl+Espacio)"></button>
+  <button id="btn-escucha" class="interruptor" title="Escucha continua con la palabra clave"><span></span>«<b id="palabra">JARVIS</b>»</button>
+  <div class="entrada-caja">
+    <div id="adjuntos"></div>
+    <textarea id="entrada" rows="1" placeholder="Escribe, pega una imagen o di «Jarvis…»"></textarea>
+  </div>
+  <button id="btn-ojo" class="icono" title="Mira mi pantalla"></button>
+  <button id="btn-enviar" class="enviar" title="Enviar"></button>
+</footer>
+
+<div id="avisos"></div>
+
+<div id="modal" class="modal oculto">
+  <div class="modal-caja">
+    <div class="modal-icono">⚠</div>
+    <h2>AUTORIZACIÓN REQUERIDA</h2>
+    <p id="modal-texto"></p>
+    <pre id="modal-args"></pre>
+    <div class="modal-botones">
+      <button id="modal-no" class="btn-no">DENEGAR</button>
+      <button id="modal-si" class="btn-si">AUTORIZAR</button>
+    </div>
+    <small>También puedes decir «sí» o «no»</small>
+  </div>
+</div>
+
+<div id="ajustes" class="cajon oculto">
+  <div class="cajon-cab"><h2>AJUSTES</h2><button id="cerrar-ajustes" class="icono">✕</button></div>
+  <label>Voz de JARVIS<select id="sel-voz"></select></label>
+  <label>Velocidad de voz<input id="vel-voz" type="range" min="-30" max="40" step="5" value="5"><span id="vel-txt">+5%</span></label>
+  <label class="check"><input id="chk-voz" type="checkbox" checked> Responder con voz</label>
+  <label class="check"><input id="chk-sonidos" type="checkbox" checked> Efectos de sonido</label>
+  <div class="botones-ajustes">
+    <button id="btn-recargar">Recargar proveedores (.env)</button>
+    <button id="btn-enfriar">Reiniciar enfriamientos</button>
+  </div>
+  <h3>LLAVES DE IA GRATIS</h3>
+  <p class="vacio">Todas son gratuitas y sin tarjeta. Cuantas más pongas, más tokens tienes: JARVIS rota entre ellas solo. Puedes poner varias llaves del mismo proveedor separadas por coma.</p>
+  <div id="llaves"></div>
+  <h3>PERSONAL Y CONEXIONES</h3>
+  <div id="datos"></div>
+  <button id="btn-guardar-llaves" class="btn-guardar">GUARDAR Y CONECTAR</button>
+  <h3>MEMORIA A LARGO PLAZO</h3>
+  <div id="memorias"></div>
+  <h3>RECORDATORIOS</h3>
+  <div id="lista-recordatorios"></div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

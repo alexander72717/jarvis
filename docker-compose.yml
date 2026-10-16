@@ -1,0 +1,42 @@
+# JARVIS 24/7 en tu servidor CasaOS.
+# En el servidor:  docker compose up -d --build
+# o en CasaOS: App Store -> "+" -> Instalar app personalizada -> Importar este archivo.
+name: jarvis
+
+services:
+  jarvis:
+    build: .
+    image: jarvis-local:latest
+    container_name: jarvis
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    env_file: .env
+    environment:
+      JARVIS_HOST: 0.0.0.0
+      JARVIS_DATA: /app/data
+      # Ollama corriendo en el mismo CasaOS (si lo instalas desde la App Store)
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434/v1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /DATA/AppData/jarvis/data:/app/data
+      - ./.env:/app/.env
+
+x-casaos:
+  architectures: [amd64, arm64]
+  main: jarvis
+  author: samuel
+  category: Utilities
+  description:
+    es_ES: Asistente personal JARVIS que rota entre IAs gratuitas.
+    en_US: Personal JARVIS assistant rotating across free AI providers.
+  tagline:
+    es_ES: Tu propio JARVIS, 24/7
+    en_US: Your own JARVIS, 24/7
+  title:
+    es_ES: JARVIS
+    en_US: JARVIS
+  icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@main/png/home-assistant.png
+  port_map: "8765"
+  index: /
