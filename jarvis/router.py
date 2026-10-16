@@ -92,6 +92,9 @@ def _espera_de(texto: str, cabeceras) -> float | None:
     m = re.search(r'retrydelay"?\s*:\s*"(\d+(?:\.\d+)?)s', t)
     if m:
         return float(m.group(1))
+    m = re.search(r"retry after\s+(\d+(?:\.\d+)?)\s*s", t)
+    if m:
+        return max(float(m.group(1)), 30.0 if "per ip" in t else 0.0)
     m = re.search(r"(?:try again|retry) in\s+(?:(\d+)h)?(?:(\d+)m(?!s))?(?:(\d+(?:\.\d+)?)(ms|s))?", t)
     if m and any(m.groups()[:3]):
         h, mi, s, u = m.groups()
@@ -105,19 +108,19 @@ def _espera_de(texto: str, cabeceras) -> float | None:
 def clasificar(estado: int, texto: str, cabeceras=None) -> ErrorProveedor:
     t = texto.lower()
     espera = _espera_de(texto, cabeceras)
-    if estado == 429 or any(w in t for w in ("rate limit", "rate_limit", "quota", "resource_exhausted", "too many requests")):
+    if estado == 429 or any(w in t for w in ("rate limit", "rate_limit", "free limit", "free_limit", "limit reached", "quota", "resource_exhausted", "too many requests")):
         diario = any(w in t for w in ("per day", "daily", "perday", "rpd", "tpd", "per-day", "free-models-per-day", "monthly"))
         return ErrorProveedor("cuota_diaria" if diario else "limite", texto, espera)
     if estado in (401, 403) or "invalid api key" in t or "unauthorized" in t:
         return ErrorProveedor("llave", texto)
+    if estado in (400, 422) and any(w in t for w in ("tool", "function")):
+        return ErrorProveedor("sin_tools", texto)
     if estado == 402 or "insufficient" in t or "credit" in t:
         return ErrorProveedor("creditos", texto)
     if estado == 413 or any(w in t for w in ("context length", "context_length", "too long", "maximum context", "too large")):
         return ErrorProveedor("contexto", texto)
     if estado == 404 or any(w in t for w in ("model_not_found", "does not exist", "decommissioned", "not found", "no endpoints", "deprecated")):
         return ErrorProveedor("modelo", texto)
-    if estado in (400, 422) and any(w in t for w in ("tool", "function")):
-        return ErrorProveedor("sin_tools", texto)
     if estado >= 500:
         return ErrorProveedor("servidor", texto, espera)
     return ErrorProveedor("otro", f"HTTP {estado} {texto}", espera)
@@ -467,7 +470,10 @@ class Router:
             msgs[0]["content"] = _texto_de(msgs[0]["content"]) + instrucciones_protocolo(tools)
         cuerpo = {"model": r.modelo, "messages": msgs, "stream": True, **prov.get("cuerpo_extra", {})}
         if nativo:
-            cuerpo["tools"] = tools
+            # Gemini rechaza objetos sin propiedades; los servidores vLLM exigen "parameters" siempre
+            cuerpo["tools"] = tools if prov["id"] == "gemini" else [
+                t if "parameters" in t["function"] else {"type": "function", "function": {**t["function"], "parameters": {"type": "object", "properties": {}}}}
+                for t in tools]
         url = prov.get("chat_url") or f"{self._base(prov)}/chat/completions"
         cab = {"Content-Type": "application/json", **prov.get("cabeceras", {})}
         if r.llave:

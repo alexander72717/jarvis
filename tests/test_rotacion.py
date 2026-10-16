@@ -140,6 +140,9 @@ def prueba_esperas():
     assert _espera_de('"retryDelay": "41s"', None) == 41
     assert _espera_de("try again in 450ms", None) == 0.45
     assert clasificar(429, "Requests per day (RPD) limit").tipo == "cuota_diaria"
+    e = clasificar(402, '{"code":"FREE_LIMIT","message":"Free limit reached: 1 reply every 30 seconds per IP. Retry after 1s"}')
+    assert e.tipo == "limite" and e.espera == 30, (e.tipo, e.espera)
+    assert clasificar(422, "tools[0].function: missing field `parameters`").tipo == "sin_tools"
     assert clasificar(404, "model decommissioned").tipo == "modelo"
     assert clasificar(401, "invalid api key").tipo == "llave"
     print("✓ entiende los mensajes de límite de Groq, Gemini y OpenRouter")

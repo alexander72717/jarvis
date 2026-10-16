@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#02060d">
+<title>J.A.R.V.I.S.</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<header class="barra">
+  <div class="marca"><span class="punto"></span>J.A.R.V.I.S.</div>
+  <div id="reloj">--:--</div>
+  <button id="btn-ajustes" class="icono" aria-label="Ajustes"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+</header>
+
+<section class="escenario">
+  <canvas id="reactor"></canvas>
+  <div id="estado">EN ESPERA</div>
+</section>
+<div id="subtitulo"></div>
+<div id="ias"></div>
+
+<main id="chat"></main>
+<div id="sugerencias"></div>
+
+<footer class="entrada">
+  <textarea id="texto" rows="1" placeholder="Escribe o toca el micrófono…"></textarea>
+  <button id="btn-enviar" class="enviar" aria-label="Enviar"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+  <button id="btn-mic" class="mic" aria-label="Hablar"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+</footer>
+
+<!-- bienvenida -->
+<div id="bienvenida" class="capa">
+  <div class="caja">
+    <div class="logo">J.A.R.V.I.S.</div>
+    <p class="tenue">Versión móvil · creado por <b id="creador">Samuel</b></p>
+    <p>Hola. Soy un asistente que funciona con inteligencias artificiales gratuitas. ¿Cómo te llamas?</p>
+    <input id="nombre" placeholder="Tu nombre" autocomplete="given-name">
+    <button id="btn-empezar" class="primario">INICIAR SISTEMA</button>
+    <p class="tenue pequeño">Funciono sin registrarte en nada. Si quieres respuestas más rápidas, en ⚙ puedes poner llaves gratis de Groq o Gemini.</p>
+  </div>
+</div>
+
+<!-- ajustes -->
+<div id="ajustes" class="capa oculto">
+  <div class="caja larga">
+    <div class="cab"><h2>AJUSTES</h2><button id="cerrar" class="icono">✕</button></div>
+    <label>Tu nombre<input id="aj-nombre"></label>
+    <label class="check"><input id="aj-voz" type="checkbox" checked> Responder con voz</label>
+    <h3>LLAVES DE IA GRATIS <span class="tenue">(opcional)</span></h3>
+    <p class="tenue pequeño">Sin tarjeta. Se guardan solo en este teléfono. Con varias, JARVIS rota entre ellas y nunca se queda sin tokens.</p>
+    <div id="llaves"></div>
+    <button id="btn-guardar" class="primario">GUARDAR</button>
+    <h3>MEMORIA</h3>
+    <div id="memorias"></div>
+    <button id="btn-borrar" class="secundario">Borrar conversación y memoria</button>
+    <p class="tenue pequeño" id="info-disp"></p>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
