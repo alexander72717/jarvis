@@ -14,7 +14,7 @@ if not exist ".env" copy ".env.example" ".env" >nul
 curl -s -o nul -m 2 http://127.0.0.1:8765/api/ping
 if errorlevel 1 (
   start "" /b ".venv\Scripts\pythonw.exe" -m jarvis
-  for /l %%i in (1,1,30) do (
+  for /l %%i in (1,1,60) do (
     timeout /t 1 /nobreak >nul
     curl -s -o nul -m 1 http://127.0.0.1:8765/api/ping && goto listo
   )
