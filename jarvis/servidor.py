@@ -26,6 +26,8 @@ agente = Agente(router, memoria)
 telegram = Telegram(agente, router)
 clientes: set[WebSocket] = set()
 SESION_WEB = "web"
+# cambia cuando se actualiza la interfaz: las ventanas abiertas se recargan solas al reconectar
+VERSION_WEB = str(int(max(f.stat().st_mtime for f in config.WEB.iterdir() if f.is_file())))
 
 
 async def difundir(evento: dict):
@@ -45,17 +47,20 @@ router.oyentes.append(lambda: _cambio_router.set())
 
 
 async def tarea_metricas():
-    previo = None
+    previo, t_previo = None, 0.0
     while True:
-        m = herramientas.metricas()
-        if previo:
-            dt = 2.0
-            m["subida"] = (m["red_tx"] - previo["red_tx"]) / dt
-            m["bajada"] = (m["red_rx"] - previo["red_rx"]) / dt
-        previo = m
-        if clientes:
+        if clientes:  # sin pantallas abiertas no se mide nada
+            m = herramientas.metricas()
+            ahora = time.time()
+            if previo:
+                dt = max(ahora - t_previo, 0.5)
+                m["subida"] = (m["red_tx"] - previo["red_tx"]) / dt
+                m["bajada"] = (m["red_rx"] - previo["red_rx"]) / dt
+            previo, t_previo = m, ahora
             await difundir({"type": "sistema", **m})
-        await asyncio.sleep(2)
+        else:
+            previo = None
+        await asyncio.sleep(3)
 
 
 async def tarea_router():
@@ -139,7 +144,7 @@ async def estado():
         "nombre": config.nombre_asistente(), "usuario": config.usuario(), "tratamiento": config.tratamiento(),
         "voz": config.voz(), "saludo": "Buenos días" if 5 <= hora < 12 else "Buenas tardes" if hora < 19 else "Buenas noches",
         "ia": router.estado(), "herramientas": len(herramientas.disponibles()), "telegram": telegram.activo,
-        "recordatorios": memoria.recordatorios(), "pc": config.ES_WINDOWS,
+        "recordatorios": memoria.recordatorios(), "pc": config.ES_WINDOWS, "version": VERSION_WEB,
     }
 
 

@@ -23,6 +23,14 @@ def main():
         os.environ["JARVIS_CLAVE"] = clave
         logging.warning("JARVIS está expuesto en la red. Clave de acceso: %s  (o define JARVIS_CLAVE en .env)", clave)
 
+    # prioridad baja: JARVIS nunca le quita CPU a juegos, Fusion o simulaciones
+    try:
+        import psutil
+
+        psutil.Process().nice(psutil.BELOW_NORMAL_PRIORITY_CLASS if config.ES_WINDOWS else 10)
+    except Exception:  # noqa: BLE001
+        pass
+
     uvicorn.run("jarvis.servidor:app", host=config.HOST, port=config.PUERTO, log_config=None, access_log=False)
 
 

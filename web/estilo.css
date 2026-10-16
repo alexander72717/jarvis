@@ -1,6 +1,6 @@
 :root {
   --fondo: #02060d;
-  --panel: rgba(6, 22, 38, 0.62);
+  --panel: rgba(5, 19, 33, 0.86);
   --panel-borde: rgba(0, 229, 255, 0.22);
   --cian: #00e5ff;
   --cian-2: #4df3ff;
@@ -91,7 +91,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .col { min-height: 0; display: flex; flex-direction: column; gap: 14px; }
 .tarjeta {
   position: relative; background: var(--panel); border: 1px solid var(--panel-borde); border-radius: 6px;
-  padding: 12px 14px; backdrop-filter: blur(6px);
+  padding: 12px 14px;
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
 }
 .tarjeta::before {
@@ -236,7 +236,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .aviso b { display: block; font-family: var(--fuente-hud); font-size: 11px; letter-spacing: .2em; color: var(--cian); margin-bottom: 4px; }
 
 /* modal */
-.modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(0, 4, 10, .7); backdrop-filter: blur(4px); }
+.modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(0, 4, 10, .82); }
 .modal-caja {
   width: min(480px, 92vw); text-align: center; background: #041526; border: 1px solid var(--ambar); padding: 24px;
   box-shadow: 0 0 40px rgba(255, 181, 71, .3); border-radius: 6px;
@@ -310,3 +310,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   .entrada-caja { min-height: 46px; }
   #entrada { padding: 11px 0; font-size: 16px; }
 }
+
+/* modo ligero: sin animaciones CSS infinitas */
+body.ligero *, body.ligero *::before, body.ligero *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }

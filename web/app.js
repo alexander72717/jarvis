@@ -21,6 +21,7 @@ const S = {
   voz: guardado("vozId", null), velocidad: guardado("velocidad", 5),
   generando: false, burbuja: null, textoActual: "", ptrVoz: 0, enCodigo: false,
   ultimoProveedor: null, adjuntos: [], confirmacion: null,
+  ligero: guardado("ligero", false), ligeroAuto: false,
 };
 
 /* ====================== audio ====================== */
@@ -135,9 +136,12 @@ let colorActual = [0, 229, 255];
 
 function rgba(c, a) { return `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`; }
 
+// resolución limitada: en pantallas con escala 150 %+ dibujar a resolución nativa cuesta el doble sin verse mejor
+const DPR = () => Math.min(devicePixelRatio || 1, 1.25);
 function ajustarLienzo(c) {
-  const r = c.getBoundingClientRect(), d = devicePixelRatio || 1;
-  if (c.width !== Math.round(r.width * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); }
+  const r = c.getBoundingClientRect(), d = DPR();
+  if (c.width !== Math.round(r.width * d) || c.height !== Math.round(r.height * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); return true; }
+  return false;
 }
 
 function nivelAudio() {
@@ -155,14 +159,14 @@ function nivelAudio() {
   return nivelSuave;
 }
 
-function dibujarReactor() {
+function dibujarReactor(dt) {
   ajustarLienzo(lienzo);
   const w = lienzo.width, h = lienzo.height, cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2;
   const obj = ACENTOS[S.modo] || ACENTOS.espera;
   colorActual = colorActual.map((v, i) => v + (obj[i] - v) * 0.08);
   const C = colorActual, nivel = nivelAudio();
   const vel = S.modo === "pensando" || S.modo === "herramienta" ? 3.2 : S.modo === "escuchando" ? 1.6 : 1;
-  tiempo += 0.016;
+  tiempo += dt;
   g2.clearRect(0, 0, w, h);
   g2.save(); g2.translate(cx, cy);
 
@@ -188,9 +192,7 @@ function dibujarReactor() {
     const col = n.estado === "activo" ? C : n.estado === "ok" ? [61, 255, 168] : n.estado === "parcial" ? [255, 181, 71] : n.estado === "agotado" ? [255, 77, 94] : [50, 80, 100];
     const r = R * (n.estado === "activo" ? 0.03 + 0.008 * Math.sin(tiempo * 10) : n.estado === "apagado" ? 0.012 : 0.02);
     g2.fillStyle = rgba(col, n.estado === "apagado" ? 0.5 : 0.95);
-    g2.shadowColor = rgba(col, 1); g2.shadowBlur = n.estado === "apagado" ? 0 : R * 0.04;
     g2.beginPath(); g2.arc(x, y, r, 0, Math.PI * 2); g2.fill();
-    g2.shadowBlur = 0;
     g2.fillStyle = rgba(col, n.estado === "apagado" ? 0.35 : 0.8);
     g2.font = `${Math.max(9, R * 0.034)}px Rajdhani, sans-serif`; g2.textAlign = "center"; g2.textBaseline = "middle";
     g2.fillText(n.corto, Math.cos(n.ang) * R * 0.845 * 1.0 + 0, Math.sin(n.ang) * R * 0.845);
@@ -208,21 +210,23 @@ function dibujarReactor() {
     const a = nodos[ry.desde], b = nodos[ry.hasta];
     if (!a || !b) continue;
     const xa = Math.cos(a.ang) * R * 0.78, ya = Math.sin(a.ang) * R * 0.78, xb = Math.cos(b.ang) * R * 0.78, yb = Math.sin(b.ang) * R * 0.78;
-    g2.strokeStyle = `rgba(255,181,71,${ry.v})`; g2.lineWidth = R * 0.008; g2.shadowColor = "#ffb547"; g2.shadowBlur = R * 0.05;
-    g2.beginPath(); g2.moveTo(xa, ya); g2.quadraticCurveTo(0, 0, xb, yb); g2.stroke(); g2.shadowBlur = 0;
+    g2.strokeStyle = `rgba(255,181,71,${ry.v})`; g2.lineWidth = R * 0.008;
+    g2.beginPath(); g2.moveTo(xa, ya); g2.quadraticCurveTo(0, 0, xb, yb); g2.stroke();
   }
 
   // ecualizador radial
-  const barras = 96;
+  const barras = S.ligero ? 48 : 96;
+  g2.strokeStyle = rgba(C, 0.35 + nivel * 0.5); g2.lineWidth = R * 0.008;
+  g2.beginPath();
   for (let i = 0; i < barras; i++) {
     const a = (i / barras) * Math.PI * 2 - Math.PI / 2;
     let amp = 0.012;
     if (analizador && hablando) amp += (datosFreq[(i % 48) + 2] / 255) * 0.09;
     else amp += nivel * 0.03 * (0.5 + 0.5 * Math.sin(i * 0.7 + tiempo * 5 * vel));
     const r0 = R * 0.6, r1 = r0 + R * amp;
-    g2.strokeStyle = rgba(C, 0.35 + amp * 4); g2.lineWidth = R * 0.008;
-    g2.beginPath(); g2.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); g2.lineTo(Math.cos(a) * r1, Math.sin(a) * r1); g2.stroke();
+    g2.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); g2.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
   }
+  g2.stroke();
 
   // anillo de marcas giratorio
   g2.save(); g2.rotate(-tiempo * 0.3 * vel);
@@ -249,32 +253,49 @@ function dibujarReactor() {
   const rn = R * (0.17 + nivel * 0.05);
   const nucleo = g2.createRadialGradient(0, 0, 0, 0, 0, rn);
   nucleo.addColorStop(0, "rgba(255,255,255,0.98)"); nucleo.addColorStop(0.35, rgba(C, 0.9)); nucleo.addColorStop(1, rgba(C, 0));
-  g2.fillStyle = nucleo; g2.shadowColor = rgba(C, 1); g2.shadowBlur = R * (0.15 + nivel * 0.25);
-  g2.beginPath(); g2.arc(0, 0, rn, 0, Math.PI * 2); g2.fill(); g2.shadowBlur = 0;
+  g2.fillStyle = nucleo;
+  g2.beginPath(); g2.arc(0, 0, rn, 0, Math.PI * 2); g2.fill();
   g2.strokeStyle = rgba(C, 0.9); g2.lineWidth = R * 0.006;
   g2.beginPath(); g2.arc(0, 0, R * 0.2, 0, Math.PI * 2); g2.stroke();
   g2.restore();
 }
 
-/* fondo: partículas tenues */
+/* fondo: rejilla y partículas estáticas (se dibuja solo al cambiar el tamaño de la ventana) */
 const fondo = $("#fondo"), gf = fondo.getContext("2d");
-const parts = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), v: 0.0002 + Math.random() * 0.0006, r: Math.random() * 1.6 + 0.3 }));
+const parts = Array.from({ length: 50 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.6 + 0.3 }));
 function dibujarFondo() {
-  ajustarLienzo(fondo);
-  const w = fondo.width, h = fondo.height;
+  if (!ajustarLienzo(fondo) && fondo.dataset.listo) return;
+  fondo.dataset.listo = 1;
+  const w = fondo.width, h = fondo.height, paso = 46 * DPR();
   gf.clearRect(0, 0, w, h);
   gf.strokeStyle = "rgba(0,229,255,0.035)"; gf.lineWidth = 1;
-  const paso = 46 * (devicePixelRatio || 1);
-  for (let x = (tiempo * 8) % paso; x < w; x += paso) { gf.beginPath(); gf.moveTo(x, 0); gf.lineTo(x, h); gf.stroke(); }
-  for (let y = 0; y < h; y += paso) { gf.beginPath(); gf.moveTo(0, y); gf.lineTo(w, y); gf.stroke(); }
+  gf.beginPath();
+  for (let x = 0; x < w; x += paso) { gf.moveTo(x, 0); gf.lineTo(x, h); }
+  for (let y = 0; y < h; y += paso) { gf.moveTo(0, y); gf.lineTo(w, y); }
+  gf.stroke();
   for (const p of parts) {
-    p.y -= p.v; if (p.y < 0) { p.y = 1; p.x = Math.random(); }
     gf.fillStyle = `rgba(0,229,255,${0.15 + p.r * 0.15})`;
-    gf.beginPath(); gf.arc(p.x * w, p.y * h, p.r * (devicePixelRatio || 1), 0, Math.PI * 2); gf.fill();
+    gf.beginPath(); gf.arc(p.x * w, p.y * h, p.r * DPR(), 0, Math.PI * 2); gf.fill();
   }
 }
+addEventListener("resize", dibujarFondo);
 
-function bucle() { dibujarReactor(); dibujarFondo(); requestAnimationFrame(bucle); }
+/* el reactor se anima a 30 fps cuando JARVIS hace algo, 12 en reposo (6 en modo ligero) y se detiene si la ventana no se ve */
+let ultimoCuadro = 0;
+function fpsObjetivo() {
+  if (document.hidden) return 0;
+  const activo = hablando || S.modo !== "espera";
+  if (S.ligero) return activo ? 20 : 6;
+  return activo ? 30 : 12;
+}
+function bucle(t) {
+  requestAnimationFrame(bucle);
+  const fps = fpsObjetivo();
+  if (!fps || t - ultimoCuadro < 1000 / fps - 2) return;
+  const dt = ultimoCuadro ? Math.min(0.1, (t - ultimoCuadro) / 1000) : 0.016;
+  ultimoCuadro = t;
+  dibujarReactor(dt);
+}
 
 /* ====================== estado / modo ====================== */
 const TEXTO_MODO = { espera: "EN ESPERA", escuchando: "ESCUCHANDO", pensando: "PROCESANDO", hablando: "HABLANDO", error: "ERROR", herramienta: "EJECUTANDO" };
@@ -350,7 +371,12 @@ function subtitulo(texto, usuario = false) {
 function conectar() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
   S.ws = ws;
-  ws.onopen = () => { $("#sub-marca").textContent = "EN LÍNEA"; };
+  ws.onopen = async () => {
+    $("#sub-marca").textContent = "EN LÍNEA";
+    // si el núcleo se actualizó mientras la ventana estaba abierta, recarga la interfaz
+    const e = await fetch("/api/estado").then((r) => r.json()).catch(() => null);
+    if (e && S.info && S.info.version && e.version !== S.info.version) location.reload();
+  };
   ws.onclose = () => { $("#sub-marca").textContent = "RECONECTANDO…"; setTimeout(conectar, 1500); };
   ws.onmessage = (e) => manejar(JSON.parse(e.data));
 }
@@ -614,6 +640,10 @@ function pintarSistema(s) {
   medidor("cpu", s.cpu); medidor("ram", s.ram); medidor("disco", s.disco);
   if (s.bateria != null) medidor("bateria", s.bateria, Math.round(s.bateria) + (s.enchufado ? "⚡" : "%"));
   else medidor("bateria", 100, "AC");
+  // sin cargador se activa el modo ligero solo (y se quita al conectarlo, salvo que lo hayas puesto tú)
+  const enBateria = s.bateria != null && s.enchufado === false;
+  if (enBateria && !S.ligero) { S.ligero = true; S.ligeroAuto = true; document.body.classList.add("ligero"); }
+  else if (!enBateria && S.ligeroAuto) { S.ligero = false; S.ligeroAuto = false; document.body.classList.remove("ligero"); }
   $("#subida").textContent = fmtBytes(s.subida); $("#bajada").textContent = fmtBytes(s.bajada);
   const h = (Date.now() / 1000 - s.arranque) / 3600;
   $("#encendido").textContent = h > 24 ? `${(h / 24).toFixed(1)} d` : `${h.toFixed(1)} h`;
@@ -845,6 +875,9 @@ function iniciarUI() {
   $("#btn-config").onclick = abrirAjustes;
   $("#cerrar-ajustes").onclick = () => $("#ajustes").classList.add("oculto");
   $("#chk-voz").onchange = (e) => { S.vozActiva = e.target.checked; guardar("voz", S.vozActiva); pintarBotonVoz(); };
+  $("#chk-ligero").checked = S.ligero;
+  $("#chk-ligero").onchange = (e) => { S.ligero = e.target.checked; S.ligeroAuto = false; guardar("ligero", S.ligero); document.body.classList.toggle("ligero", S.ligero); };
+  document.body.classList.toggle("ligero", S.ligero);
   $("#chk-sonidos").onchange = (e) => { S.sonidos = e.target.checked; guardar("sonidos", S.sonidos); };
   $("#sel-voz").onchange = (e) => { S.voz = e.target.value; guardar("vozId", S.voz); decir("Así sonará mi voz a partir de ahora."); };
   $("#vel-voz").oninput = (e) => { S.velocidad = +e.target.value; guardar("velocidad", S.velocidad); $("#vel-txt").textContent = (S.velocidad >= 0 ? "+" : "") + S.velocidad + "%"; };
@@ -867,5 +900,6 @@ function iniciarUI() {
 iniciarUI();
 reloj(); setInterval(reloj, 1000);
 conectar();
-bucle();
+dibujarFondo();
+requestAnimationFrame(bucle);
 arrancar();
