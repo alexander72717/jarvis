@@ -14,7 +14,8 @@ Write-Host "> Empaquetando JARVIS..."
 $tmp = Join-Path $env:TEMP "jarvis_despliegue.tar"
 if (Test-Path $tmp) { Remove-Item $tmp }
 tar -cf $tmp -C $raiz jarvis web requirements.txt Dockerfile docker-compose.yml .env.example
-if (Test-Path (Join-Path $raiz ".env")) { tar -rf $tmp -C $raiz .env }
+# El .env del PC NO se sube: el cerebro tiene el suyo (clave propia, OLLAMA_URL del servidor).
+# La primera vez se crea desde .env.example; edítalo en el servidor o pásale tus llaves a mano.
 
 Write-Host "> Copiando a $destinoSsh..."
 ssh $destinoSsh "mkdir -p $Destino"

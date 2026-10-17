@@ -70,6 +70,27 @@ def disponibles() -> dict:
             if not (v["solo_pc"] and not config.ES_WINDOWS) and not (sin_notion and k in NOTION_API)}
 
 
+# Herramientas que el PC le presta al cerebro cuando funciona como nodo (además de todas las «solo PC»)
+PARA_NODO = {"estado_sistema", "listar_archivos", "leer_archivo", "escribir_archivo", "ejecutar_comando",
+             "mis_gustos_musicales", "como_abro"}
+
+
+def para_nodo() -> list[dict]:
+    """Lo que este equipo anuncia al cerebro cuando se conecta como nodo."""
+    return [{"nombre": k, "desc": v["desc"], "params": v["params"], "req": v["req"], "peligrosa": v["peligrosa"]}
+            for k, v in disponibles().items() if v["solo_pc"] or k in PARA_NODO]
+
+
+def todas() -> dict:
+    """Herramientas propias + las que prestan los nodos conectados (el PC)."""
+    from .nodos import REGISTRO
+
+    propias = disponibles()
+    remotas = {k: {"desc": h["desc"], "params": h["params"], "req": h["req"], "peligrosa": h["peligrosa"], "solo_pc": False, "remota": h}
+               for k, h in REGISTRO.remotas(set(propias)).items()}
+    return {**propias, **remotas}
+
+
 def _corto(texto: str, maximo: int) -> str:
     """Las descripciones viajan en CADA petición: se recortan para ahorrar tokens de la capa gratis."""
     texto = texto.strip()
@@ -115,15 +136,16 @@ LOCALES = ["fecha_hora", "clima", "buscar_web", "calcular", "recordar", "buscar_
 
 
 def esquemas_locales() -> list:
-    todas = {e["function"]["name"]: e for e in esquemas()}
-    return [todas[n] for n in LOCALES if n in todas]
+    por_nombre = {e["function"]["name"]: e for e in esquemas()}
+    return [por_nombre[n] for n in LOCALES if n in por_nombre]
 
 
 def esquemas(contexto: str | None = None, usadas: set | None = None) -> list:
     filtro = relevantes(contexto, usadas) if contexto is not None else None
     out = []
-    for k, v in disponibles().items():
-        if filtro is not None and k not in filtro:
+    for k, v in todas().items():
+        original = v["remota"]["original"] if v.get("remota") else k
+        if filtro is not None and k not in filtro and original not in filtro:
             continue
         f = {"name": k, "description": _corto(v["desc"], 240)}
         if v["params"]:  # Gemini rechaza objetos sin propiedades: si no hay parámetros se omite
@@ -134,13 +156,17 @@ def esquemas(contexto: str | None = None, usadas: set | None = None) -> list:
 
 
 def es_peligrosa(nombre) -> bool:
-    return HERRAMIENTAS.get(nombre, {}).get("peligrosa", False)
+    return todas().get(nombre, {}).get("peligrosa", False)
 
 
 async def ejecutar(nombre: str, args: dict, ctx: Contexto) -> str:
-    h = disponibles().get(nombre)
+    h = todas().get(nombre)
     if not h:
         return f"Error: la herramienta '{nombre}' no existe aquí."
+    if h.get("remota"):
+        from .nodos import REGISTRO
+
+        return (await REGISTRO.ejecutar(h["remota"], {k: v for k, v in args.items() if k in h["params"]}))[:9000]
     try:
         res = await h["fn"](ctx, **{k: v for k, v in args.items() if k in h["params"]})
     except TypeError as e:
@@ -595,6 +621,9 @@ def _ssh_base() -> list[str] | None:
 @herramienta("servidor_estado", "Revisa el servidor casero CasaOS: si está encendido, latencia, y (con SSH) carga, RAM, disco y contenedores Docker.")
 async def servidor_estado(ctx):
     host = config.env("SERVIDOR_HOST")
+    if not host and config.EN_DOCKER:
+        # este JARVIS ES el cerebro que vive en el servidor: se mide a sí mismo
+        return "Este es el servidor donde vive JARVIS. " + await estado_sistema(ctx)
     if not host:
         return "No hay servidor configurado (SERVIDOR_HOST en .env)."
     t0 = time.time()

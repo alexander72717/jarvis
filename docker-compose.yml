@@ -9,6 +9,10 @@ services:
     image: jarvis-local:latest
     container_name: jarvis
     restart: unless-stopped
+    # límites: el cerebro es liviano y no debe estorbar a las demás apps del servidor
+    cpus: 1.0
+    mem_limit: 768m
+    cpu_shares: 512
     ports:
       - "8765:8765"
     env_file: .env

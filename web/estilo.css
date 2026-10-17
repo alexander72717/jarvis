@@ -423,3 +423,6 @@ body.limpio.panel .velo { display: block !important; position: fixed; inset: 0; 
 /* el cajón debe quedar por encima de la barra superior (la rejilla no crea su propio nivel) */
 body.limpio .rejilla { position: static; z-index: auto; }
 body.limpio .barra-sup, body.limpio .barra-inf { position: relative; z-index: 3; }
+
+#qr-celular { text-align: center; padding: 8px 0; }
+#qr-celular img { width: 230px; background: #fff; padding: 10px; border-radius: 10px; }

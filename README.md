@@ -108,6 +108,25 @@ JARVIS pasa solo a «local primero». Otros modos: `siempre`, `fondo`, `no` (tam
 En modo local, lo difícil (programar, explicar, analizar, pantalla, Notion…) sigue yendo a una IA
 potente, y si la local intenta «fingir» una acción sin usar la herramienta, se descarta y escala.
 
+## Un solo JARVIS en el PC y en el celular
+
+```
+ 📱 celular ──(Tailscale, HTTPS)──► 🧠 cerebro en el servidor (Docker): memoria, historial, recordatorios, IAs
+ 💻 PC ───────── «nodo» ──────────┘   el PC le presta: abrir apps, Spotify, volumen, pantalla, Notion…
+```
+
+1. En el servidor: `docker compose up -d --build` con su propio `.env` (`JARVIS_HOST=0.0.0.0`,
+   una `JARVIS_CLAVE` larga, tus llaves y `OLLAMA_URL=http://host.docker.internal:11434/v1`).
+2. HTTPS solo dentro de Tailscale (para el micrófono del celular):
+   `sudo tailscale serve --bg --https=8443 http://127.0.0.1:8765`
+3. En el `.env` del PC: `JARVIS_HUB=http://<ip-tailscale>:8765`, `JARVIS_HUB_CLAVE=<la misma clave>`,
+   `JARVIS_CELULAR_URL=https://<servidor>.<tailnet>.ts.net:8443`.
+4. En el PC: ⚙ → **📱 Conectar el celular** muestra un QR de un solo uso (15 min). Con Tailscale
+   encendido en el celular, escanéalo y queda conectado.
+
+Lo que dices en un dispositivo aparece en vivo en el otro. Desde el celular puedes pedir cosas al PC
+(«baja el volumen de mi PC», «abre Spotify») si está encendido; si el servidor cae, el PC sigue solo.
+
 ## JARVIS para tus amigos
 
 Versión autónoma: no usa tus llaves ni se conecta a tu PC. Cada amigo puede poner sus llaves gratis

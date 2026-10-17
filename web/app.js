@@ -536,6 +536,12 @@ function manejar(ev) {
       chip("✕ " + ev.texto, "rot"); poner("error"); S.generando = false; botonEnviar();
       setTimeout(() => poner("espera"), 2500);
       return;
+    case "externo": {
+      // conversación que ocurrió en otro dispositivo (p. ej. el celular): se muestra aquí en vivo
+      const icono = { celular: "📱 ", pc: "💻 " }[ev.dispositivo] || "";
+      if (ev.texto) burbuja(ev.rol === "user" ? "user" : "assistant", ev.rol === "user" ? icono + ev.texto : ev.texto);
+      return;
+    }
     case "tecla":
       // tecla rombo del Victus: si habla, se calla; si no, escucha una orden
       iniciarAudio();
@@ -1010,6 +1016,15 @@ function iniciarUI() {
   const nuevaConversacion = async () => { await fetch("/api/nueva_conversacion", { method: "POST" }); chat.innerHTML = ""; actualizarVacio(); subtitulo("Conversación nueva. La memoria a largo plazo se conserva."); };
   $("#btn-nueva").onclick = nuevaConversacion;
   $("#btn-nueva-sup").onclick = nuevaConversacion;
+  $("#btn-celular").onclick = async () => {
+    const caja = $("#qr-celular");
+    caja.classList.remove("oculto");
+    caja.innerHTML = '<div class="vacio">Generando código…</div>';
+    const r = await fetch("/api/qr_celular").then((x) => x.json()).catch(() => ({ error: "Sin respuesta" }));
+    if (r.error) { caja.innerHTML = `<div class="vacio">${escapar(r.error)}</div>`; return; }
+    caja.innerHTML = `<img src="data:image/png;base64,${r.png}" alt="QR para el celular">
+      <div class="vacio">Con Tailscale encendido en el celular, escanéalo con la cámara. Sirve una sola vez y vence en ${Math.round(r.vence_en / 60)} min.</div>`;
+  };
   $("#sel-local").onchange = async (e) => {
     await fetch("/api/llaves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ IA_LOCAL_MODO: e.target.value }) });
     aviso("IA LOCAL", e.target.options[e.target.selectedIndex].text);

@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import Body, FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import config, herramientas, voz
@@ -22,6 +22,8 @@ from . import musica
 from .silencio import SILENCIO
 from .telegram import Telegram
 from . import tecla
+from .enlace import ENLACE
+from .nodos import REGISTRO
 
 log = logging.getLogger("jarvis")
 
@@ -34,6 +36,18 @@ clientes: set[WebSocket] = set()
 SESION_WEB = "web"
 # cambia cuando se actualiza la interfaz: las ventanas abiertas se recargan solas al reconectar
 VERSION_WEB = str(int(max(f.stat().st_mtime for f in config.WEB.iterdir() if f.is_file())))
+
+
+async def difundir_a_otros(origen, evento: dict):
+    """Lo que se habla en un dispositivo aparece en vivo en los demás (PC <-> celular)."""
+    datos = json.dumps(evento, ensure_ascii=False, default=str)
+    for ws in list(clientes):
+        if ws is origen:
+            continue
+        try:
+            await ws.send_text(datos)
+        except Exception:  # noqa: BLE001
+            clientes.discard(ws)
 
 
 async def difundir(evento: dict):
@@ -76,7 +90,7 @@ async def tarea_router():
         except asyncio.TimeoutError:
             pass
         _cambio_router.clear()
-        if clientes:
+        if clientes and not ENLACE.conectado:
             await difundir({"type": "ia", **router.estado()})
 
 
@@ -134,6 +148,7 @@ async def vida(app):
     tareas = [asyncio.create_task(t()) for t in (tarea_metricas, tarea_router, tarea_recordatorios, silencio.vigilante)]
     tareas.append(asyncio.create_task(tecla.escuchar(tecla_pulsada)))
     tareas.append(asyncio.create_task(musica.observador()))
+    tareas.append(asyncio.create_task(ENLACE.mantener(router, memoria)))
     if telegram.activo:
         tareas.append(asyncio.create_task(telegram.bucle()))
     log.info("JARVIS listo en http://%s:%s", config.HOST, config.PUERTO)
@@ -148,6 +163,7 @@ app = FastAPI(title="JARVIS", lifespan=vida)
 app.mount("/static", StaticFiles(directory=config.WEB), name="static")
 
 LOCALES = {"127.0.0.1", "::1", "localhost"}
+CODIGOS: dict[str, float] = {}  # códigos de emparejamiento de un solo uso -> vencimiento
 
 
 @app.middleware("http")
@@ -157,11 +173,17 @@ async def proteger(request: Request, siguiente):
     origen = request.client.host if request.client else ""
     if not clave or origen in LOCALES or request.url.path.startswith("/static"):
         return await siguiente(request)
+    codigo = request.query_params.get("emparejar")
+    if codigo and CODIGOS.pop(codigo, 0) > time.time():
+        # el QR del celular trae un código de un solo uso; se cambia por una sesión guardada en el navegador
+        resp = RedirectResponse("/", status_code=303)
+        resp.set_cookie("jarvis_clave", clave, max_age=365 * 86400, httponly=True, secure=True, samesite="lax")
+        return resp
     if request.query_params.get("clave") == clave:
         resp = await siguiente(request)
         resp.set_cookie("jarvis_clave", clave, max_age=180 * 86400, httponly=True, samesite="strict")
         return resp
-    if request.cookies.get("jarvis_clave") == clave:
+    if request.cookies.get("jarvis_clave") == clave or request.headers.get("x-jarvis-clave") == clave:
         return await siguiente(request)
     return HTMLResponse("<body style='background:#02060d;color:#00e5ff;font-family:sans-serif;display:grid;place-items:center;height:100vh'>"
                         "<form><h2>J.A.R.V.I.S. · acceso restringido</h2><input name=clave type=password autofocus placeholder='clave'> <button>Entrar</button></form></body>", 401)
@@ -170,7 +192,8 @@ async def proteger(request: Request, siguiente):
 def _ws_permitido(ws: WebSocket) -> bool:
     clave = config.env("JARVIS_CLAVE")
     origen = ws.client.host if ws.client else ""
-    return not clave or origen in LOCALES or ws.cookies.get("jarvis_clave") == clave
+    return (not clave or origen in LOCALES or ws.cookies.get("jarvis_clave") == clave
+            or ws.query_params.get("clave") == clave or ws.headers.get("x-jarvis-clave") == clave)
 
 
 @app.get("/")
@@ -186,17 +209,35 @@ async def ping():
 @app.get("/api/estado")
 async def estado():
     hora = datetime.now().hour
+    datos = _estado_local(hora)
+    if ENLACE.conectado:
+        try:
+            remoto = await ENLACE.pedir("GET", "/api/estado")
+            datos.update(ia=remoto["ia"], recordatorios=remoto["recordatorios"], ia_local=remoto["ia_local"],
+                         herramientas=remoto["herramientas"], cerebro=config.env("JARVIS_HUB"), nodos=remoto.get("nodos", []))
+        except Exception as e:  # noqa: BLE001
+            log.warning("estado del cerebro no disponible: %s: %s", type(e).__name__, e)
+    return datos
+
+
+def _estado_local(hora):
     return {
         "nombre": config.nombre_asistente(), "usuario": config.usuario(), "tratamiento": config.tratamiento(),
         "voz": config.voz(), "saludo": "Buenos días" if 5 <= hora < 12 else "Buenas tardes" if hora < 19 else "Buenas noches",
-        "ia": router.estado(), "herramientas": len(herramientas.disponibles()), "telegram": telegram.activo,
+        "ia": router.estado(), "herramientas": len(herramientas.todas()), "telegram": telegram.activo,
         "recordatorios": memoria.recordatorios(), "pc": config.ES_WINDOWS, "version": VERSION_WEB,
         "ia_local": {"modo": config.env("IA_LOCAL_MODO", "auto"), "disponible": router.hay_local(), "cuotas_bajas": router.cuotas_bajas()},
+        "nodos": REGISTRO.estado(), "cerebro": "este equipo",
     }
 
 
 @app.get("/api/historial")
 async def historial():
+    if ENLACE.conectado:
+        try:
+            return await ENLACE.pedir("GET", "/api/historial")
+        except Exception:  # noqa: BLE001
+            pass
     return memoria.historial_visible(SESION_WEB)
 
 
@@ -282,6 +323,9 @@ async def poner_llaves(cambios: dict = Body(...)):
 @app.post("/api/precalentar")
 async def precalentar():
     """La interfaz avisa que el usuario empezó a hablar o escribir: la IA local se prepara."""
+    if ENLACE.conectado:
+        asyncio.create_task(ENLACE.pedir("POST", "/api/precalentar"))
+        return {"ok": True}
     asyncio.create_task(agente.precalentar())
     return {"ok": True}
 
@@ -307,18 +351,74 @@ async def reiniciar_enfriamientos():
 
 @app.get("/api/memorias")
 async def memorias():
+    if ENLACE.conectado:
+        return await ENLACE.pedir("GET", "/api/memorias")
     return memoria.hechos()
 
 
 @app.delete("/api/memorias/{id_}")
 async def borrar_memoria(id_: int):
+    if ENLACE.conectado:
+        return await ENLACE.pedir("DELETE", f"/api/memorias/{id_}")
     return {"ok": memoria.olvidar(id_)}
 
 
 @app.post("/api/nueva_conversacion")
 async def nueva_conversacion():
+    if ENLACE.conectado:
+        return await ENLACE.pedir("POST", "/api/nueva_conversacion")
     memoria.borrar_sesion(SESION_WEB)
     return {"ok": True}
+
+
+@app.get("/api/qr_celular")
+async def qr_celular():
+    """(En el PC) Pide al cerebro un código de un solo uso y lo devuelve como QR para escanear con el celular."""
+    import base64
+    import io
+
+    import qrcode
+
+    if not ENLACE.activo:
+        return JSONResponse({"error": "Este JARVIS no está conectado a un cerebro (JARVIS_HUB)."}, 400)
+    try:
+        d = await ENLACE.pedir("POST", "/api/codigo_emparejar")
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"El cerebro no responde: {e}"}, 503)
+    base = (config.env("JARVIS_CELULAR_URL") or config.env("JARVIS_HUB")).rstrip("/")
+    buf = io.BytesIO()
+    qrcode.make(f"{base}/?emparejar={d['codigo']}", box_size=9, border=2).save(buf, format="PNG")
+    return {"png": base64.b64encode(buf.getvalue()).decode(), "vence_en": d["vence_en"], "direccion": base}
+
+
+@app.post("/api/codigo_emparejar")
+async def codigo_emparejar():
+    """Da un código de un solo uso (15 min) para entrar desde el celular sin teclear la clave."""
+    import secrets as _s
+
+    ahora = time.time()
+    for c in [c for c, v in CODIGOS.items() if v < ahora]:
+        del CODIGOS[c]
+    codigo = _s.token_urlsafe(12)
+    CODIGOS[codigo] = ahora + 900
+    return {"codigo": codigo, "vence_en": 900}
+
+
+@app.websocket("/nodo")
+async def ws_nodo(ws: WebSocket):
+    """Un PC se conecta para prestar sus herramientas a este cerebro."""
+    if not _ws_permitido(ws):
+        await ws.close(code=4401)
+        return
+    await ws.accept()
+    try:
+        registro = json.loads(await ws.receive_text())
+        await difundir({"type": "nodo", "nombre": registro.get("nombre"), "conectado": True})
+        await REGISTRO.atender(ws, registro.get("nombre") or "PC", registro.get("herramientas") or [])
+    except (WebSocketDisconnect, RuntimeError, ValueError):
+        pass
+    finally:
+        await difundir({"type": "nodo", "nombre": registro.get("nombre") if "registro" in locals() else None, "conectado": False})
 
 
 @app.websocket("/ws")
@@ -328,6 +428,17 @@ async def ws_conversacion(ws: WebSocket):
         return
     await ws.accept()
     clientes.add(ws)
+    if ENLACE.conectado:
+        try:
+            await ENLACE.conversar(ws)
+            clientes.discard(ws)
+            return
+        except (WebSocketDisconnect, RuntimeError):
+            clientes.discard(ws)
+            return
+        except Exception as e:  # noqa: BLE001  el cerebro no respondió: se conversa en local
+            log.warning("no pude conversar a través del cerebro (%s); sigo en local", e)
+    dispositivo = ws.query_params.get("dispositivo") or ("celular" if "mobile" in ws.headers.get("user-agent", "").lower() else "web")
     pendientes: dict[str, asyncio.Future] = {}
     tarea: asyncio.Task | None = None
 
@@ -351,7 +462,9 @@ async def ws_conversacion(ws: WebSocket):
 
     async def atender(texto, canal, imagenes):
         try:
-            await agente.responder(SESION_WEB, texto, emit, confirmar, canal=canal, imagenes=imagenes)
+            await difundir_a_otros(ws, {"type": "externo", "rol": "user", "texto": texto, "dispositivo": canal})
+            final = await agente.responder(SESION_WEB, texto, emit, confirmar, canal=canal, imagenes=imagenes)
+            await difundir_a_otros(ws, {"type": "externo", "rol": "assistant", "texto": final, "dispositivo": canal})
         except asyncio.CancelledError:
             await emit({"type": "fin", "meta": {}, "texto": "", "cancelado": True})
         except Exception as e:  # noqa: BLE001
@@ -366,7 +479,7 @@ async def ws_conversacion(ws: WebSocket):
             if t == "mensaje" and m.get("texto", "").strip():
                 if tarea and not tarea.done():
                     tarea.cancel()
-                tarea = asyncio.create_task(atender(m["texto"].strip(), "voz" if m.get("voz") else "web", m.get("imagenes")))
+                tarea = asyncio.create_task(atender(m["texto"].strip(), dispositivo, m.get("imagenes")))
             elif t == "confirmar":
                 fut = pendientes.get(m.get("id"))
                 if fut and not fut.done():

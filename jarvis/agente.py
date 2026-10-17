@@ -93,7 +93,9 @@ def nivel_para(texto: str, imagenes, cuotas_bajas: bool = False) -> str:
     return "local"
 
 
-CANALES = {"web": "interfaz HUD en el PC (con voz)", "voz": "conversación por voz en el PC", "telegram": "Telegram desde el teléfono (lejos del PC)"}
+CANALES = {"web": "interfaz web de JARVIS", "voz": "conversación por voz en el PC", "telegram": "Telegram desde el teléfono (lejos del PC)",
+           "pc": "la pantalla del PC del usuario (con voz)",
+           "celular": "el celular del usuario, quizá lejos del PC: las herramientas marcadas [En el PC] actúan en su computador si está encendido"}
 
 
 class Agente:
@@ -248,7 +250,7 @@ class Agente:
                 else:
                     resultado = await herramientas.ejecutar(c["name"], args, ctx)
                 await emit({"type": "herramienta", "nombre": c["name"], "args": args, "estado": "fin", "resultado": resultado[:400]})
-                if nivel == "local" and (len(resultado) > 2500 or paso >= 2 or c["name"] not in herramientas.disponibles()):
+                if nivel == "local" and (len(resultado) > 2500 or paso >= 2 or c["name"] not in herramientas.todas()):
                     nivel = "inteligente"
                     mensajes[0] = {"role": "system", "content": await self.sistema(canal, texto)}
                 directa = respuesta_directa(c["name"], args, resultado) if nivel == "local" and len(fin["llamadas"]) == 1 else None
