@@ -98,6 +98,18 @@ Abre `http://IP-del-servidor:8765`; la primera vez pide la clave que aparece en 
 como último respaldo para todos tus dispositivos. Para que el PC consulte el servidor, llena
 `SERVIDOR_HOST`/`SERVIDOR_USUARIO` y configura una llave SSH (`ssh-keygen` + `ssh-copy-id`).
 
+## JARVIS para tus amigos
+
+Versión autónoma: no usa tus llaves ni se conecta a tu PC. Cada amigo puede poner sus llaves gratis
+(se guardan solo en su equipo); sin llaves funciona con Pollinations (1 respuesta cada 30 s).
+
+- **PC:** `python movil/empaquetar_pc.py` genera `dist/JARVIS-para-amigos.html`, un solo archivo de
+  ~90 KB. Se comparte por WhatsApp/Drive y se abre con doble clic en Chrome o Edge (en Edge suena mejor:
+  trae voces neuronales). Incluye clima, búsqueda, Wikipedia, noticias (GDELT), cálculo exacto,
+  temporizadores y memoria.
+- **Android:** el proyecto está en `movil/` (WebView + puente nativo para voz, linterna y vibración).
+  Falta compilar la APK, para lo cual se necesita JDK 17 y el SDK de Android.
+
 ## Seguridad
 
 - Por defecto solo escucha en `127.0.0.1`. Si lo expones en la red, exige clave.

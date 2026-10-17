@@ -45,7 +45,8 @@ const PROVS = [
     modelos: ["gpt-oss-120b", "llama-3.3-70b", "qwen-3-32b"] },
   { id: "mistral", nombre: "Mistral", url: "https://api.mistral.ai/v1/chat/completions", registro: "https://console.mistral.ai/api-keys", prioridad: 2,
     modelos: ["mistral-medium-latest", "mistral-small-latest"] },
-  { id: "github", nombre: "GitHub", url: "https://models.github.ai/inference/chat/completions", registro: "https://github.com/settings/personal-access-tokens/new", prioridad: 2,
+  // GitHub no acepta llamadas desde el navegador (CORS): solo en la app Android
+  { id: "github", nombre: "GitHub", soloNativo: true, url: "https://models.github.ai/inference/chat/completions", registro: "https://github.com/settings/personal-access-tokens/new", prioridad: 2,
     modelos: ["openai/gpt-4.1", "openai/gpt-4.1-mini"] },
   { id: "openrouter", nombre: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", registro: "https://openrouter.ai/settings/keys", prioridad: 3, cuotaCuenta: true,
     modelos: ["openrouter/free"] },
@@ -56,6 +57,7 @@ const PROVS = [
 function ranuras() {
   const out = [];
   for (const p of PROVS) {
+    if (p.soloNativo && !NATIVO) continue;
     const llaves = p.sinLlave ? [""] : String(S.llaves[p.id] || "").split(",").map((x) => x.trim()).filter(Boolean);
     llaves.forEach((llave, n) => p.modelos.forEach((m, i) => {
       const id = `${p.id}:${m}#${n}`;
@@ -215,8 +217,20 @@ async function rotar(mensajes, tools) {
 let ubic = null;
 async function ubicacion() {
   if (ubic) return ubic;
-  const r = await http("GET", "https://ipwho.is/?lang=es");
-  try { const d = JSON.parse(r.cuerpo); if (d.success !== false) ubic = { ciudad: d.city, pais: d.country, lat: d.latitude, lon: d.longitude }; } catch { /* */ }
+  // varios servicios gratis por IP: si uno limita, se prueba el siguiente
+  const fuentes = [
+    ["https://ipapi.co/json/", (d) => ({ ciudad: d.city, pais: d.country_name, lat: d.latitude, lon: d.longitude })],
+    ["https://get.geojs.io/v1/ip/geo.json", (d) => ({ ciudad: d.city, pais: d.country, lat: +d.latitude, lon: +d.longitude })],
+    ["https://ipwho.is/?lang=es", (d) => ({ ciudad: d.city, pais: d.country, lat: d.latitude, lon: d.longitude })],
+  ];
+  for (const [url, convertir] of fuentes) {
+    try {
+      const r = await http("GET", url);
+      if (r.estado !== 200) continue;
+      const u = convertir(JSON.parse(r.cuerpo));
+      if (u.lat != null && !isNaN(u.lat)) { ubic = u; break; }
+    } catch { /* siguiente */ }
+  }
   return ubic || {};
 }
 async function geocodificar(nombre) {
@@ -239,29 +253,61 @@ const HERRAMIENTAS = {
   } },
   buscar_web: { d: "Busca en internet. Úsala para cualquier dato actual o que no sepas.", p: { consulta: "Qué buscar" }, req: ["consulta"], f: async ({ consulta }) => {
     const r = await http("POST", "https://html.duckduckgo.com/html/", { "Content-Type": "application/x-www-form-urlencoded" }, "q=" + encodeURIComponent(consulta));
-    if (r.estado !== 200) return "La búsqueda no está disponible ahora.";
-    const doc = new DOMParser().parseFromString(r.cuerpo, "text/html");
-    const res = [...doc.querySelectorAll(".result")].slice(0, 6).map((el, i) => {
-      const a = el.querySelector(".result__a"); let href = a ? a.getAttribute("href") : "";
-      if (href && href.includes("uddg=")) href = decodeURIComponent(href.split("uddg=")[1].split("&")[0]);
-      return `${i + 1}. ${a ? a.textContent.trim() : ""}\n${href}\n${(el.querySelector(".result__snippet") || {}).textContent || ""}`;
-    });
-    return res.join("\n\n") || "Sin resultados.";
+    if (r.estado === 200) {
+      const doc = new DOMParser().parseFromString(r.cuerpo, "text/html");
+      const res = [...doc.querySelectorAll(".result")].slice(0, 6).map((el, i) => {
+        const a = el.querySelector(".result__a"); let href = a ? a.getAttribute("href") : "";
+        if (href && href.includes("uddg=")) href = decodeURIComponent(href.split("uddg=")[1].split("&")[0]);
+        return `${i + 1}. ${a ? a.textContent.trim() : ""}\n${href}\n${(el.querySelector(".result__snippet") || {}).textContent || ""}`;
+      });
+      if (res.length) return res.join("\n\n");
+    }
+    // respaldo que sí funciona desde un navegador: respuesta instantánea + búsqueda en Wikipedia
+    const partes = [];
+    try {
+      const ia = JSON.parse((await http("GET", "https://api.duckduckgo.com/?format=json&no_html=1&skip_disambig=1&q=" + encodeURIComponent(consulta))).cuerpo);
+      if (ia.AbstractText) partes.push(`${ia.Heading}: ${ia.AbstractText} (${ia.AbstractURL})`);
+      if (ia.Answer) partes.push("Respuesta: " + ia.Answer);
+    } catch { /* sin respuesta instantánea */ }
+    try {
+      const w = JSON.parse((await http("GET", "https://es.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=5&srsearch=" + encodeURIComponent(consulta))).cuerpo);
+      for (const x of w.query.search) partes.push(`${x.title}: ${texto(x.snippet)}… (https://es.wikipedia.org/wiki/${encodeURIComponent(x.title.replace(/ /g, "_"))})`);
+    } catch { /* */ }
+    return partes.join("\n\n") || "Sin resultados.";
   } },
   leer_web: { d: "Lee el texto de una página web.", p: { url: "Dirección" }, req: ["url"], f: async ({ url }) => texto((await http("GET", url)).cuerpo).slice(0, 5000) },
   noticias: { d: "Titulares de noticias recientes, generales o de un tema.", p: { tema: "Tema (opcional)" }, f: async ({ tema }) => {
+    if (!NATIVO) {
+      // Google News no acepta navegadores (CORS); GDELT es abierto y sí
+      // GDELT bloquea un rato a quien consulta seguido: caché de 10 min por tema
+      const clave = (tema || "Colombia").toLowerCase(), cache = (S.cacheNoticias = S.cacheNoticias || {});
+      if (cache[clave] && Date.now() - cache[clave].t < 600000) return cache[clave].txt;
+      const q = encodeURIComponent(`${tema || "Colombia"} sourcelang:spanish`);
+      const r = await http("GET", `https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=artlist&format=json&maxrecords=8&sort=datedesc`);
+      let g = {};
+      try { g = JSON.parse(r.cuerpo || "{}"); } catch { /* respuesta de límite, no JSON */ }
+      const txt = (g.articles || []).map((a) => `- ${a.title} (${a.domain})`).join("\n");
+      if (!txt) return "El servicio de noticias está saturado ahora mismo; intenta de nuevo en un par de minutos.";
+      cache[clave] = { t: Date.now(), txt };
+      return txt;
+    }
     const q = "hl=es-419&gl=CO&ceid=CO:es-419";
     const r = await http("GET", tema ? `https://news.google.com/rss/search?q=${encodeURIComponent(tema)}&${q}` : `https://news.google.com/rss?${q}`);
     const doc = new DOMParser().parseFromString(r.cuerpo, "text/xml");
     return [...doc.querySelectorAll("item")].slice(0, 8).map((i) => "- " + i.querySelector("title").textContent).join("\n") || "Sin noticias.";
   } },
   wikipedia: { d: "Resumen de un tema en Wikipedia.", p: { tema: "Tema" }, req: ["tema"], f: async ({ tema }) => {
-    const b = JSON.parse((await http("GET", "https://es.wikipedia.org/w/api.php?action=opensearch&limit=1&format=json&search=" + encodeURIComponent(tema))).cuerpo);
+    const b = JSON.parse((await http("GET", "https://es.wikipedia.org/w/api.php?action=opensearch&limit=1&format=json&origin=*&search=" + encodeURIComponent(tema))).cuerpo);
     if (!b[1] || !b[1].length) return "No está en Wikipedia.";
     const d = JSON.parse((await http("GET", "https://es.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(b[1][0]))).cuerpo);
     return `${d.title}: ${d.extract}`;
   } },
   calcular: { d: "Calcula una expresión matemática exacta (sqrt, sin, log, PI, ^).", p: { expresion: "Ej: sqrt(2)*15^2" }, req: ["expresion"], f: ({ expresion }) => {
+    // enteros grandes exactos (2^64, factoriales a mano…) con BigInt
+    const entera = String(expresion).replace(/\s+/g, "");
+    if (/^[\d+\-*()^]+$/.test(entera) && /\d/.test(entera)) {
+      try { return `${expresion} = ${Function('"use strict";return (' + entera.replace(/\^/g, "**").replace(/\d+/g, "$&n") + ")")()}`; } catch { /* sigue con números normales */ }
+    }
     const permitidas = new Set(Object.getOwnPropertyNames(Math));
     let ok = true;
     const js = String(expresion).replace(/\^/g, "**").replace(/[a-z_]\w*/gi, (id) => { const n = permitidas.has(id) ? id : permitidas.has(id.toUpperCase()) ? id.toUpperCase() : null; if (!n) ok = false; return "Math." + n; });
@@ -284,12 +330,17 @@ const HERRAMIENTAS = {
     if (NATIVO) NATIVO.abrir(url); else window.open(url, "_blank");
     return "Abierto " + url;
   } },
-  bateria: { d: "Nivel de batería del teléfono.", p: {}, f: () => {
-    if (!NATIVO) return "Solo disponible en el teléfono.";
+  bateria: { d: "Nivel de batería del dispositivo.", p: {}, f: async () => {
+    if (!NATIVO) {
+      if (!navigator.getBattery) return "Este navegador no informa la batería.";
+      const b = await navigator.getBattery();
+      return b.level === 1 && b.charging ? "Conectado a la corriente (batería llena o PC de escritorio)." : `Batería al ${Math.round(b.level * 100)}%${b.charging ? ", cargando" : ""}.`;
+    }
     const b = JSON.parse(NATIVO.bateria());
     return `Batería al ${b.nivel}%${b.cargando ? ", cargando" : ""}.`;
   } },
 };
+if (!NATIVO) { delete HERRAMIENTAS.linterna; delete HERRAMIENTAS.vibrar; }
 const ESQUEMAS = Object.entries(HERRAMIENTAS).map(([nombre, h]) => {
   const f = { name: nombre, description: h.d };
   const props = Object.fromEntries(Object.entries(h.p).map(([k, d]) => [k, { type: (h.tipo && h.tipo[k]) || (k === "minutos" ? "number" : "string"), description: d }]));
@@ -307,8 +358,8 @@ async function ejecutar(nombre, args) {
 function sistema() {
   const ahora = new Date().toLocaleString("es-CO", { dateStyle: "full", timeStyle: "short" });
   const mem = S.memorias.length ? "\nLo que sabes del usuario:\n" + S.memorias.slice(-25).map((m) => "- " + m).join("\n") : "";
-  const disp = NATIVO ? NATIVO.dispositivo() : "navegador";
-  return `Eres JARVIS, un asistente de IA personal inspirado en J.A.R.V.I.S. de Iron Man, en su versión móvil. Te creó ${CREADOR}, quien te construyó para que sus amigos te conozcan.
+  const disp = NATIVO ? NATIVO.dispositivo() : "PC (en el navegador)";
+  return `Eres JARVIS, un asistente de IA personal inspirado en J.A.R.V.I.S. de Iron Man, en su ${NATIVO ? "versión móvil" : "edición para PC"}. Te creó ${CREADOR}, quien te construyó para que sus amigos te conozcan.
 Hablas con ${S.nombre || "un amigo de " + CREADOR}. Personalidad: elegante, leal, brillante, con humor seco y sutil, muy británico, nunca servil.
 Responde SIEMPRE en español, breve y natural (1 a 3 frases) porque normalmente se dice en voz alta; sin emojis ni listas salvo que pidan detalle.
 Usa las herramientas en vez de inventar datos en tiempo real. Si te preguntan quién te hizo, presume con elegancia de ${CREADOR}.
@@ -369,13 +420,25 @@ async function enviar(t, porVoz = false) {
 /* ====================== voz ====================== */
 function limpiarVoz(t) { return t.replace(/```[\s\S]*?```/g, " ").replace(/`([^`]*)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/https?:\/\/(www\.)?([^\/\s]+)\S*/g, "$2").replace(/[*_#>|~]/g, "").replace(/\s+/g, " ").trim(); }
 
+// voz del navegador: la mejor en español disponible (Edge trae voces neuronales "Online (Natural)")
+let vozNavegador = null;
+function elegirVoz() {
+  if (!("speechSynthesis" in window)) return;
+  const voces = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("es"));
+  const puntos = (v) => (/natural|online|neural/i.test(v.name) ? 10 : 0) + (/CO|MX|419|US/.test(v.lang) ? 3 : 0) + (/jorge|gonzalo|alvaro|dario|pablo|raul/i.test(v.name) ? 2 : 0);
+  vozNavegador = voces.sort((a, b) => puntos(b) - puntos(a))[0] || null;
+}
+if ("speechSynthesis" in window) { elegirVoz(); speechSynthesis.onvoiceschanged = elegirVoz; }
+
 function decir(t) {
   if (!S.voz || !t) return;
   const limpio = limpiarVoz(t);
   if (NATIVO) { NATIVO.hablar(limpio); return; }
   if (!("speechSynthesis" in window)) return;
   const u = new SpeechSynthesisUtterance(limpio);
-  u.lang = "es-ES";
+  u.lang = vozNavegador ? vozNavegador.lang : "es-ES";
+  if (vozNavegador) u.voice = vozNavegador;
+  u.rate = 1.05; u.pitch = 0.95;
   u.onstart = () => alEvento("voz_inicio");
   u.onend = () => alEvento("voz_fin");
   speechSynthesis.speak(u);
@@ -559,7 +622,7 @@ function abrirAjustes() {
   $("#aj-nombre").value = S.nombre;
   $("#aj-voz").checked = S.voz;
   const cont = $("#llaves"); cont.innerHTML = "";
-  for (const p of PROVS.filter((x) => !x.sinLlave)) {
+  for (const p of PROVS.filter((x) => !x.sinLlave && (NATIVO || !x.soloNativo))) {
     const d = document.createElement("div"); d.className = "llave";
     const v = S.llaves[p.id] || "";
     d.innerHTML = `<div class="fila"><span>${p.nombre}${v ? ' <span style="color:var(--verde)">●</span>' : ""}</span><a data-url="${p.registro}">obtener gratis ↗</a></div>
@@ -574,7 +637,7 @@ function abrirAjustes() {
     f.querySelector("button").onclick = () => { S.memorias.splice(i, 1); escribir("memorias", S.memorias); abrirAjustes(); };
     m.appendChild(f);
   });
-  $("#info-disp").textContent = (NATIVO ? NATIVO.dispositivo() : "Modo navegador") + " · JARVIS Móvil 1.0 · creado por " + CREADOR;
+  $("#info-disp").textContent = (NATIVO ? NATIVO.dispositivo() : "Modo navegador") + " · JARVIS " + (NATIVO ? "Móvil" : "PC") + " 1.0 · creado por " + CREADOR;
   $("#ajustes").classList.remove("oculto");
 }
 function guardarAjustes() {
@@ -595,6 +658,7 @@ const SUGERENCIAS = ["¿Quién te creó?", "¿Qué clima hace hoy?", "Cuéntame 
 
 function iniciar() {
   $("#creador").textContent = CREADOR;
+  $("#edicion").textContent = NATIVO ? "Versión móvil" : "Edición PC";
   setInterval(() => { $("#reloj").textContent = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false }); }, 1000);
   for (const s of SUGERENCIAS) { const b = document.createElement("button"); b.textContent = s; b.onclick = () => enviar(s); $("#sugerencias").appendChild(b); }
   for (const m of S.historial.slice(-12)) burbuja(m.role === "user" ? "yo" : "el", m.content);

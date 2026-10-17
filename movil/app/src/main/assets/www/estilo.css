@@ -87,3 +87,22 @@ body[data-modo="escuchando"] #estado { color: var(--verde); }
 .llave a { color: var(--cian); text-decoration: none; font-size: 13px; }
 .mem { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(0, 229, 255, .08); font-size: 14px; }
 .mem span { flex: 1; } .mem button { background: none; border: 0; color: var(--rojo); }
+
+/* ---------- PC: reactor a la izquierda, conversación a la derecha ---------- */
+@media (min-width: 900px) {
+  body {
+    display: grid; grid-template-columns: minmax(380px, 1fr) minmax(420px, 600px);
+    grid-template-rows: auto 1fr auto auto auto;
+    grid-template-areas: "barra barra" "esc chat" "sub chat" "ias chat" "sug entrada";
+  }
+  .barra { grid-area: barra; padding: 12px 24px; }
+  .escenario { grid-area: esc; width: min(44vw, 60vh, 540px); align-self: center; margin: 0 auto; }
+  #estado { font-size: 12px; }
+  #subtitulo { grid-area: sub; font-size: 21px; max-height: 90px; padding: 6px 32px 0; }
+  #ias { grid-area: ias; }
+  #sugerencias { grid-area: sug; flex-wrap: wrap; justify-content: center; padding: 10px 32px 18px; overflow: visible; }
+  #chat { grid-area: chat; border-left: 1px solid var(--borde); padding: 16px 22px; }
+  .entrada { grid-area: entrada; border-left: 1px solid var(--borde); padding: 12px 22px 18px; }
+  .msg { font-size: 16.5px; }
+  #sugerencias button:hover, .icono:hover { border-color: var(--cian); color: var(--cian); }
+}
