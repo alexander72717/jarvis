@@ -920,11 +920,25 @@ async function arrancar() {
   const linea = (t) => new Promise((ok) => { log.textContent += t + "\n"; setTimeout(ok, 160 + Math.random() * 160); });
   await linea("> Iniciando núcleo cognitivo ...................");
   let info = null;
-  for (let i = 0; i < 20 && !info; i++) {
-    info = await fetch("/api/estado").then((r) => r.json()).catch(() => null);
-    if (!info) await new Promise((ok) => setTimeout(ok, 700));
+  for (let i = 0; !info; i++) {
+    const r = await fetch("/api/estado", { cache: "no-store" }).catch(() => null);
+    if (r && r.status === 401) {
+      await linea("> Sesión no válida en este dispositivo.");
+      await linea("  En el PC: ⚙ → 📱 Conectar el celular, y escanea el QR.");
+      $("#btn-iniciar").textContent = "SIN SESIÓN";
+      return;
+    }
+    if (r && r.ok) info = await r.json().catch(() => null);
+    if (info) break;
+    if (i === 5) {
+      // en el celular casi siempre es Tailscale apagado: lo decimos claro y seguimos intentando solos
+      await linea("> Sin conexión con el cerebro.");
+      await linea("  ¿Está encendido Tailscale en este dispositivo? Reintentando…");
+      $("#btn-iniciar").textContent = "ESPERANDO CONEXIÓN…";
+    }
+    await new Promise((ok) => setTimeout(ok, i < 5 ? 700 : 3000));
   }
-  if (!info) { await linea("> ERROR: el núcleo no responde."); return; }
+  if (log.textContent.includes("Sin conexión")) await linea("> Conexión recuperada.");
   S.info = info;
   const provs = info.ia.proveedores.filter((p) => p.configurado && p.ranuras);
   await linea(`> Matriz neuronal ............ ${provs.length} IAs gratis · ${info.ia.total} ranuras`);
