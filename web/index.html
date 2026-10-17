@@ -6,7 +6,7 @@
 <title>J.A.R.V.I.S.</title>
 <link rel="icon" href="/static/jarvis.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/estilo.css">
 </head>
 <body>
@@ -29,6 +29,8 @@
     <div id="fecha"></div>
   </div>
   <div class="acciones-sup">
+    <button id="btn-panel" class="icono solo-limpio" title="Sistema e IAs"></button>
+    <button id="btn-nueva-sup" class="icono solo-limpio" title="Conversación nueva"></button>
     <button id="btn-silencio" class="icono" title="Voz de JARVIS (activar/silenciar)"></button>
     <button id="btn-config" class="icono" title="Ajustes"></button>
   </div>
@@ -63,6 +65,7 @@
       <canvas id="reactor"></canvas>
       <div id="estado" class="estado">EN ESPERA</div>
     </div>
+    <button id="pildora" class="pildora solo-limpio" title="Ver sistema e IAs"></button>
     <div id="subtitulo" class="subtitulo"></div>
     <div id="sugerencias" class="sugerencias"></div>
   </section>
@@ -80,12 +83,13 @@
   <button id="btn-escucha" class="interruptor" title="Escucha continua con la palabra clave"><span></span>«<b id="palabra">JARVIS</b>»</button>
   <div class="entrada-caja">
     <div id="adjuntos"></div>
-    <textarea id="entrada" rows="1" placeholder="Escribe, pega una imagen o di «Jarvis…»"></textarea>
+    <textarea id="entrada" rows="1" placeholder="Escribe o di «Jarvis…»" title="También puedes pegar una imagen"></textarea>
   </div>
   <button id="btn-ojo" class="icono" title="Mira mi pantalla"></button>
   <button id="btn-enviar" class="enviar" title="Enviar"></button>
 </footer>
 
+<div id="velo" class="velo"></div>
 <div id="avisos"></div>
 
 <div id="modal" class="modal oculto">
@@ -108,6 +112,7 @@
   <label>Velocidad de voz<input id="vel-voz" type="range" min="-30" max="40" step="5" value="5"><span id="vel-txt">+5%</span></label>
   <label class="check"><input id="chk-voz" type="checkbox" checked> Responder con voz</label>
   <label class="check"><input id="chk-sonidos" type="checkbox" checked> Efectos de sonido</label>
+  <label class="check"><input id="chk-hud" type="checkbox"> Interfaz HUD clásica (paneles siempre visibles)</label>
   <label class="check"><input id="chk-ligero" type="checkbox"> Modo ligero (menos animación; se activa solo con batería)</label>
   <div class="botones-ajustes">
     <button id="btn-recargar">Recargar proveedores (.env)</button>

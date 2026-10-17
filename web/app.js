@@ -9,6 +9,8 @@ const ICONOS = {
   ojo: '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   voz: '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
   mudo: '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6"/></svg>',
+  panel: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>',
+  mas: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   ajustes: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
 };
 
@@ -20,7 +22,8 @@ const S = {
   vozActiva: guardado("voz", true), sonidos: guardado("sonidos", true),
   voz: guardado("vozId", null), velocidad: guardado("velocidad", 5),
   generando: false, burbuja: null, textoActual: "", ptrVoz: 0, enCodigo: false,
-  ultimoProveedor: null, adjuntos: [], confirmacion: null,
+  ultimoProveedor: null, adjuntos: [], confirmacion: null, provActual: null,
+  hud: guardado("hud", false),
   ligero: guardado("ligero", false), ligeroAuto: false,
 };
 
@@ -184,7 +187,9 @@ function dibujarReactor(dt) {
   g2.strokeStyle = rgba(C, 0.15); g2.beginPath(); g2.arc(0, 0, R * 0.88, 0, Math.PI * 2); g2.stroke();
 
   // nodos de proveedores (la "matriz neuronal")
-  const ids = Object.keys(nodos);
+  const ancho = lienzo.clientWidth;
+  const ids = ancho < 150 ? [] : Object.keys(nodos);
+  const conEtiquetas = ancho >= 320;
   ids.forEach((id, i) => {
     const n = nodos[id];
     n.ang = -Math.PI / 2 + (i / ids.length) * Math.PI * 2 + tiempo * 0.02;
@@ -195,7 +200,7 @@ function dibujarReactor(dt) {
     g2.beginPath(); g2.arc(x, y, r, 0, Math.PI * 2); g2.fill();
     g2.fillStyle = rgba(col, n.estado === "apagado" ? 0.35 : 0.8);
     g2.font = `${Math.max(9, R * 0.034)}px Rajdhani, sans-serif`; g2.textAlign = "center"; g2.textBaseline = "middle";
-    g2.fillText(n.corto, Math.cos(n.ang) * R * 0.845 * 1.0 + 0, Math.sin(n.ang) * R * 0.845);
+    if (conEtiquetas) g2.fillText(n.corto, Math.cos(n.ang) * R * 0.845 * 1.0 + 0, Math.sin(n.ang) * R * 0.845);
     if (n.estado === "activo") {
       g2.strokeStyle = rgba(C, 0.25 + 0.2 * Math.sin(tiempo * 8)); g2.lineWidth = R * 0.004;
       g2.setLineDash([R * 0.02, R * 0.015]); g2.lineDashOffset = -tiempo * R * 0.3;
@@ -303,7 +308,33 @@ function poner(modo, texto) {
   S.modo = modo;
   document.body.dataset.modo = modo;
   $("#estado").textContent = texto || TEXTO_MODO[modo] || modo.toUpperCase();
+  if (modo === "espera") { S.provActual = null; $("#entrada").placeholder = PLACEHOLDER; }
+  pintarPildora();
 }
+
+/* ---- modo limpio: píldora de estado, cajón y pantalla de inicio ---- */
+const PLACEHOLDER = $("#entrada").placeholder;
+const MODO_HUMANO = { escuchando: "Escuchando", pensando: "Pensando", hablando: "Hablando", herramienta: "Trabajando", error: "Error" };
+function pintarPildora() {
+  const p = $("#pildora");
+  if (!p) return;
+  let txt;
+  if (S.modo !== "espera" && MODO_HUMANO[S.modo]) txt = MODO_HUMANO[S.modo] + (S.provActual ? " · " + S.provActual : "");
+  else if (S.ia) {
+    const n = S.ia.proveedores.filter((x) => x.configurado && x.ranuras).length;
+    txt = `${n} IAs listas · ${S.ia.libres}/${S.ia.total} modelos`;
+  } else txt = "Conectando…";
+  p.innerHTML = `<i></i>${escapar(txt)}`;
+}
+function actualizarVacio() { document.body.classList.toggle("vacio", !chat.querySelector(".msg")); }
+function aplicarInterfaz() {
+  document.body.classList.toggle("limpio", !S.hud);
+  document.body.classList.remove("panel");
+  actualizarVacio();
+  fondo.dataset.listo = "";
+  dibujarFondo();
+}
+function alternarPanel(abrir) { document.body.classList.toggle("panel", abrir ?? !document.body.classList.contains("panel")); }
 
 /* ====================== chat ====================== */
 function escapar(t) { return t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
@@ -345,6 +376,7 @@ function burbuja(rol, texto = "", meta = null, imagenes = []) {
   for (const src of imagenes) { const im = document.createElement("img"); im.src = src; d.appendChild(im); }
   if (meta) ponerMeta(d, meta);
   chat.appendChild(d); alFondo();
+  actualizarVacio();
   return d;
 }
 
@@ -363,6 +395,7 @@ function chip(texto, clase = "") {
 }
 
 function subtitulo(texto, usuario = false) {
+  if (usuario) $("#entrada").placeholder = texto;
   const s = $("#subtitulo");
   s.innerHTML = usuario ? `<span class="usuario">${escapar(texto)}</span>` : escapar(limpiarParaVoz(texto)).slice(-260);
 }
@@ -393,6 +426,7 @@ function manejar(ev) {
       S.ultimoProveedor = ev.id_proveedor;
       if (anterior && nodos[anterior] && nodos[ev.id_proveedor]) rayos.push({ desde: anterior, hasta: ev.id_proveedor, v: 1 });
       S.rotandoDesde = null;
+      S.provActual = ev.proveedor.replace(/ \(.*\)$/, "");
       marcarActivo(ev.id_proveedor);
       if (S.modo !== "hablando") poner("pensando", "ENLACE: " + ev.proveedor.toUpperCase());
       return;
@@ -665,6 +699,7 @@ function pintarIA(e) {
   const cont = $("#proveedores");
   const activos = e.proveedores.filter((p) => p.configurado && p.ranuras);
   $("#resumen-ia").textContent = `${activos.length} IAs · ${e.libres}/${e.total} ranuras`;
+  pintarPildora();
   document.querySelectorAll("#estrategias button").forEach((b) => b.classList.toggle("activa", b.dataset.e === e.estrategia));
   const orden = [...e.proveedores].sort((a, b) => (b.configurado && b.ranuras ? 1 : 0) - (a.configurado && a.ranuras ? 1 : 0));
   cont.innerHTML = "";
@@ -850,6 +885,14 @@ function iniciarUI() {
   $("#btn-mic").innerHTML = ICONOS.mic;
   $("#btn-ojo").innerHTML = ICONOS.ojo;
   $("#btn-config").innerHTML = ICONOS.ajustes;
+  $("#btn-panel").innerHTML = ICONOS.panel;
+  $("#btn-nueva-sup").innerHTML = ICONOS.mas;
+  $("#chk-hud").checked = S.hud;
+  $("#chk-hud").onchange = (e) => { S.hud = e.target.checked; guardar("hud", S.hud); aplicarInterfaz(); };
+  $("#btn-panel").onclick = () => alternarPanel();
+  $("#pildora").onclick = () => alternarPanel(true);
+  $("#velo").onclick = () => alternarPanel(false);
+  aplicarInterfaz();
   botonEnviar(); pintarBotonVoz(); escucha.pintar();
   $("#chk-sonidos").checked = S.sonidos;
   $("#vel-voz").value = S.velocidad; $("#vel-txt").textContent = (S.velocidad >= 0 ? "+" : "") + S.velocidad + "%";
@@ -894,7 +937,9 @@ function iniciarUI() {
   $("#vel-voz").oninput = (e) => { S.velocidad = +e.target.value; guardar("velocidad", S.velocidad); $("#vel-txt").textContent = (S.velocidad >= 0 ? "+" : "") + S.velocidad + "%"; };
   $("#btn-recargar").onclick = async () => { aviso("PROVEEDORES", "Releyendo .env y descubriendo modelos…"); const e = await fetch("/api/recargar", { method: "POST" }).then((r) => r.json()); pintarIA(e); aviso("PROVEEDORES", `${e.total} ranuras disponibles.`); };
   $("#btn-enfriar").onclick = async () => pintarIA(await fetch("/api/reiniciar_enfriamientos", { method: "POST" }).then((r) => r.json()));
-  $("#btn-nueva").onclick = async () => { await fetch("/api/nueva_conversacion", { method: "POST" }); chat.innerHTML = ""; subtitulo("Conversación nueva. La memoria a largo plazo se conserva."); };
+  const nuevaConversacion = async () => { await fetch("/api/nueva_conversacion", { method: "POST" }); chat.innerHTML = ""; actualizarVacio(); subtitulo("Conversación nueva. La memoria a largo plazo se conserva."); };
+  $("#btn-nueva").onclick = nuevaConversacion;
+  $("#btn-nueva-sup").onclick = nuevaConversacion;
   $("#btn-guardar-llaves").onclick = async () => { await guardarLlaves(); probarConexiones(); };
   $("#btn-probar").onclick = probarConexiones;
   $("#modal-si").onclick = () => responderConfirmacion(true);
@@ -905,7 +950,7 @@ function iniciarUI() {
   }));
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.code === "Space") { e.preventDefault(); escucha.alternarDirecto(); }
-    if (e.key === "Escape") { callar(); $("#ajustes").classList.add("oculto"); if (S.confirmacion) responderConfirmacion(false); }
+    if (e.key === "Escape") { callar(); alternarPanel(false); $("#ajustes").classList.add("oculto"); if (S.confirmacion) responderConfirmacion(false); }
   });
 }
 
