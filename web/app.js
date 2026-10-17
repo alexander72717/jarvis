@@ -25,6 +25,7 @@ const S = {
   ultimoProveedor: null, adjuntos: [], confirmacion: null, provActual: null,
   hud: guardado("hud", false),
   ligero: guardado("ligero", false), ligeroAuto: false,
+  silenciarPC: guardado("silenciarPC", true), porVoz: false,
 };
 
 /* ====================== audio ====================== */
@@ -76,6 +77,7 @@ function decir(texto) {
   const promesa = fetch("/api/tts?" + params).then((r) => { if (!r.ok) throw new Error("tts"); return r.blob(); })
     .then((b) => URL.createObjectURL(b)).catch(() => ({ respaldo: t }));
   colaVoz.push(promesa);
+  revisarSilencio();  // pausa la música mientras se genera el audio, antes de que empiece a sonar
   if (!hablando) reproducirCola();
 }
 
@@ -98,6 +100,7 @@ async function reproducirCola() {
   }
   hablando = false;
   if (S.modo === "hablando") poner(S.generando ? "pensando" : "espera");
+  revisarSilencio();
 }
 
 function callar() {
@@ -106,7 +109,47 @@ function callar() {
   reproductor.pause();
   if ("speechSynthesis" in window) speechSynthesis.cancel();
   if (S.modo === "hablando") poner("espera");
+  revisarSilencio();
 }
+
+/* ---- silencio del PC: pausa la música y silencia otros sonidos mientras JARVIS habla o te escucha ---- */
+const silencioPC = { activo: false, espera: null, pulso: null };
+function navegadorJarvis() {
+  const ua = navigator.userAgent;
+  if (navigator.brave) return "brave.exe";
+  if (/Edg\//.test(ua)) return "msedge.exe";
+  if (/OPR\//.test(ua)) return "opera.exe";
+  if (/Firefox\//.test(ua)) return "firefox.exe";
+  return "chrome.exe";
+}
+function necesitaSilencio() {
+  if (!S.silenciarPC) return false;
+  return hablando || colaVoz.length > 0 || S.modo === "escuchando" || escucha.directo || escucha.esperandoComando || (S.generando && S.porVoz && S.vozActiva);
+}
+function pedirSilencio(activar) {
+  fetch("/api/silencio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activar, navegador: navegadorJarvis() }) }).catch(() => {});
+}
+function revisarSilencio() {
+  if (necesitaSilencio()) {
+    clearTimeout(silencioPC.espera); silencioPC.espera = null;
+    if (!silencioPC.activo) {
+      silencioPC.activo = true;
+      pedirSilencio(true);
+      silencioPC.pulso = setInterval(() => pedirSilencio(true), 20000);  // el núcleo restaura solo si deja de oír estos avisos
+    }
+  } else if (silencioPC.activo && !silencioPC.espera) {
+    // pequeña pausa antes de devolver el sonido: entre frase y frase no debe volver la música
+    silencioPC.espera = setTimeout(() => {
+      silencioPC.espera = null;
+      if (necesitaSilencio()) return;
+      silencioPC.activo = false; clearInterval(silencioPC.pulso);
+      pedirSilencio(false);
+    }, 1500);
+  }
+}
+addEventListener("pagehide", () => {
+  if (silencioPC.activo) navigator.sendBeacon("/api/silencio", new Blob([JSON.stringify({ activar: false })], { type: "application/json" }));
+});
 
 function alimentarVoz(final = false) {
   if (!S.vozActiva) return;
@@ -310,6 +353,7 @@ function poner(modo, texto) {
   $("#estado").textContent = texto || TEXTO_MODO[modo] || modo.toUpperCase();
   if (modo === "espera") { S.provActual = null; $("#entrada").placeholder = PLACEHOLDER; }
   pintarPildora();
+  revisarSilencio();
 }
 
 /* ---- modo limpio: píldora de estado, cajón y pantalla de inicio ---- */
@@ -493,6 +537,7 @@ function manejar(ev) {
 }
 
 function enviar(texto, porVoz = false) {
+  S.porVoz = porVoz;
   texto = (texto || "").trim();
   if (!texto && !S.adjuntos.length) return;
   if (!texto) texto = "¿Qué ves en esta imagen?";
@@ -929,6 +974,8 @@ function iniciarUI() {
   $("#btn-config").onclick = abrirAjustes;
   $("#cerrar-ajustes").onclick = () => $("#ajustes").classList.add("oculto");
   $("#chk-voz").onchange = (e) => { S.vozActiva = e.target.checked; guardar("voz", S.vozActiva); pintarBotonVoz(); };
+  $("#chk-silenciar").checked = S.silenciarPC;
+  $("#chk-silenciar").onchange = (e) => { S.silenciarPC = e.target.checked; guardar("silenciarPC", S.silenciarPC); revisarSilencio(); };
   $("#chk-ligero").checked = S.ligero;
   $("#chk-ligero").onchange = (e) => { S.ligero = e.target.checked; S.ligeroAuto = false; guardar("ligero", S.ligero); document.body.classList.toggle("ligero", S.ligero); };
   document.body.classList.toggle("ligero", S.ligero);

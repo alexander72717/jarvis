@@ -8,3 +8,9 @@ psutil>=6.0
 pillow>=10.4
 ddgs>=9.0
 python-dotenv>=1.0
+# control del audio de Windows (pausar y silenciar mientras JARVIS habla)
+pycaw>=20240316; sys_platform == "win32"
+winrt-runtime>=3.0; sys_platform == "win32"
+winrt-Windows.Foundation>=3.0; sys_platform == "win32"
+winrt-Windows.Foundation.Collections>=3.0; sys_platform == "win32"
+winrt-Windows.Media.Control>=3.0; sys_platform == "win32"

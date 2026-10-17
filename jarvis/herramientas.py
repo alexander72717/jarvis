@@ -87,6 +87,7 @@ GRUPOS = [
     ({"olvidar", "listar_recordatorios", "cancelar_recordatorio"}, ("olvida", "recordatorio", "pendiente", "cancela", "borra")),
     ({"servidor_estado", "servidor_comando", "servidor_encender"}, ("servidor", "casaos", "server", "docker", "contenedor", "enciende")),
     ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
+    ({"como_abro"}, ("cómo abres", "como abres", "dónde abres", "donde abres", "cómo abro", "como abro", "recuerdas abrir")),
     ({"enviar_al_telefono"}, ("teléfono", "telefono", "celular", "telegram", "móvil", "movil", "mándame", "mandame", "envíame", "enviame")),
 ]
 
@@ -437,50 +438,23 @@ async def estado_sistema(ctx):
             f"RAM {m['ram']}% ({m['ram_usada']} de {m['ram_total']}), disco {m['disco']}%{bat}. Encendido hace {horas:.1f} h. Más RAM: {top}")
 
 
-def _accesos_directos() -> dict[str, Path]:
-    rutas = [Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs",
-             Path(os.environ.get("PROGRAMDATA", "")) / "Microsoft/Windows/Start Menu/Programs",
-             Path.home() / "Desktop", Path(os.environ.get("PUBLIC", "")) / "Desktop"]
-    out = {}
-    for r in rutas:
-        if r.exists():
-            for f in list(r.rglob("*.lnk")) + list(r.rglob("*.url")):
-                out.setdefault(f.stem.lower(), f)
-    return out
+@herramienta("abrir", "Abre un programa, archivo, carpeta o página web. Busca primero la app instalada en el PC y si no existe la abre en la web; "
+             "recuerda cómo se abrió cada cosa. Si el usuario dice dónde abrirlo ('en la app', 'en el navegador', 'en Brave'), pásalo en donde/navegador y quedará guardado.",
+             {"objetivo": P("string", "Ej: 'spotify', 'notion', 'https://...', 'C:/Users/...'"),
+              "donde": P("string", "Solo si el usuario lo dijo: app o web", ["app", "web"]),
+              "navegador": P("string", "Solo si el usuario lo dijo: brave, chrome, edge, firefox u opera")}, ["objetivo"], solo_pc=True)
+async def abrir(ctx, objetivo, donde=None, navegador=None):
+    from . import aperturas
+
+    return await asyncio.to_thread(aperturas.abrir, objetivo, donde, navegador)
 
 
-ALIAS = {"bloc de notas": "notepad", "notas": "notepad", "calculadora": "calc", "explorador": "explorer", "archivos": "explorer",
-         "configuracion": "ms-settings:", "configuración": "ms-settings:", "terminal": "wt", "cmd": "cmd", "powershell": "powershell",
-         "paint": "mspaint", "administrador de tareas": "taskmgr", "vscode": "code", "visual studio code": "code",
-         "youtube": "https://youtube.com", "gmail": "https://mail.google.com", "whatsapp": "https://web.whatsapp.com",
-         "chatgpt": "https://chatgpt.com", "github": "https://github.com", "spotify": "spotify:"}
+@herramienta("como_abro", "Muestra cómo JARVIS recuerda abrir cada cosa (app del PC o web y en qué navegador).")
+async def como_abro(ctx):
+    from . import aperturas
 
-
-@herramienta("abrir", "Abre un programa, archivo, carpeta o página web en el PC (por nombre aproximado, ruta o URL).",
-             {"objetivo": P("string", "Ej: 'spotify', 'notion', 'https://...', 'C:/Users/...'")}, ["objetivo"], solo_pc=True)
-async def abrir(ctx, objetivo):
-    o = objetivo.strip()
-    clave = o.lower()
-    destino = ALIAS.get(clave, o)
-    if re.match(r"^[a-z][\w+.-]*:", destino) and not re.match(r"^[a-z]:[\\/]", destino, re.I):
-        os.startfile(destino)  # URL o protocolo
-        return f"Abierto {destino}"
-    if Path(destino).exists():
-        os.startfile(destino)
-        return f"Abierto {destino}"
-    accesos = _accesos_directos()
-    candidato = accesos.get(clave) or next((v for k, v in accesos.items() if clave in k), None)
-    if not candidato:
-        cerca = difflib.get_close_matches(clave, accesos.keys(), n=1, cutoff=0.55)
-        candidato = accesos[cerca[0]] if cerca else None
-    if candidato:
-        os.startfile(str(candidato))
-        return f"Abierto {candidato.stem}"
-    try:
-        subprocess.Popen(["cmd", "/c", "start", "", destino], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        return f"Intenté abrir '{destino}'."
-    except OSError as e:
-        return f"No encontré '{objetivo}': {e}"
+    filas = [f"- {k}: {'app del PC' if v['tipo'] == 'app' else 'web en ' + aperturas.nombre_navegador(v.get('navegador'))}" for k, v in aperturas.todos().items()]
+    return "\n".join(filas) or "Aún no recuerdo nada."
 
 
 TECLAS = {"play_pausa": 0xB3, "siguiente": 0xB0, "anterior": 0xB1, "detener": 0xB2, "silenciar": 0xAD, "bajar_volumen": 0xAE, "subir_volumen": 0xAF}

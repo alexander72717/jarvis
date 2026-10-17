@@ -16,6 +16,7 @@ from .agente import Agente
 from .memoria import Memoria
 from .proveedores import CATALOGO
 from .router import Router, SinProveedores
+from .silencio import Silenciador
 from .telegram import Telegram
 
 log = logging.getLogger("jarvis")
@@ -24,6 +25,7 @@ router = Router()
 memoria = Memoria()
 agente = Agente(router, memoria)
 telegram = Telegram(agente, router)
+silencio = Silenciador()
 clientes: set[WebSocket] = set()
 SESION_WEB = "web"
 # cambia cuando se actualiza la interfaz: las ventanas abiertas se recargan solas al reconectar
@@ -88,13 +90,15 @@ async def tarea_recordatorios():
 @asynccontextmanager
 async def vida(app):
     await router.iniciar()
-    tareas = [asyncio.create_task(t()) for t in (tarea_metricas, tarea_router, tarea_recordatorios)]
+    await silencio.recuperar_tras_cierre()
+    tareas = [asyncio.create_task(t()) for t in (tarea_metricas, tarea_router, tarea_recordatorios, silencio.vigilante)]
     if telegram.activo:
         tareas.append(asyncio.create_task(telegram.bucle()))
     log.info("JARVIS listo en http://%s:%s", config.HOST, config.PUERTO)
     yield
     for t in tareas:
         t.cancel()
+    await silencio.restaurar()
     router.guardar(True)
 
 
@@ -230,6 +234,14 @@ async def poner_llaves(cambios: dict = Body(...)):
     ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
     await router.iniciar()
     return router.estado()
+
+
+@app.post("/api/silencio")
+async def cambiar_silencio(datos: dict = Body(...)):
+    """La interfaz avisa cuando JARVIS empieza/termina de hablar o escuchar."""
+    if datos.get("activar"):
+        return await silencio.silenciar(datos.get("navegador"))
+    return await silencio.restaurar()
 
 
 @app.post("/api/probar")
