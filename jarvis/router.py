@@ -614,6 +614,35 @@ class Router:
                 texto += ev["text"]
         return texto.strip()
 
+    async def probar(self) -> list[dict]:
+        """Hace una llamada real y mínima a cada proveedor configurado (por cada llave) y dice si responde."""
+        mensajes = [{"role": "system", "content": "Responde solo con la palabra: listo"}, {"role": "user", "content": "¿Estás en línea?"}]
+        grupos: dict[tuple, list[Ranura]] = {}
+        for r in self.ranuras:
+            grupos.setdefault((r.prov["id"], r.n_llave), []).append(r)
+
+        async def una(clave, ranuras):
+            prov = ranuras[0].prov
+            res = {"id": prov["id"], "nombre": prov["nombre"], "llave": clave[1] + 1, "modelos": len(ranuras), "ok": False}
+            for r in sorted(ranuras, key=lambda x: x.rango)[:3]:  # si un modelo fue retirado, prueba el siguiente
+                try:
+                    async for ev in self._stream_ranura(r, mensajes, None, False):
+                        if ev["type"] == "fin":
+                            res.update(ok=True, modelo=r.modelo, segundos=ev["segundos"], respuesta=ev["texto"][:60])
+                    r.enfriar_hasta, r.motivo = 0, ""
+                    return res
+                except ErrorProveedor as e:
+                    self._penalizar(r, e)
+                    res.update(modelo=r.modelo, error=r.motivo or e.tipo, detalle=e.detalle[:160])
+                    if e.tipo not in ("modelo", "sin_tools", "vacio"):
+                        return res
+            return res
+
+        resultados = await asyncio.gather(*(una(k, v) for k, v in grupos.items()))
+        self.guardar(True)
+        self._avisar()
+        return sorted(resultados, key=lambda x: (not x["ok"], x["nombre"]))
+
     async def transcribir(self, audio: bytes, nombre: str = "audio.webm") -> str:
         """Voz a texto con Whisper gratis (Groq), rotando llaves."""
         for prov in CATALOGO:

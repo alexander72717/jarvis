@@ -777,6 +777,17 @@ async function guardarLlaves() {
   pintarLlaves();
 }
 
+async function probarConexiones() {
+  const caja = $("#resultado-prueba");
+  caja.innerHTML = '<div class="vacio">Llamando a cada IA…</div>';
+  const res = await fetch("/api/probar", { method: "POST" }).then((r) => r.json()).catch(() => []);
+  if (!res.length) { caja.innerHTML = '<div class="vacio">No hay proveedores configurados.</div>'; return; }
+  caja.innerHTML = res.map((r) => `<div class="fila-prueba ${r.ok ? "ok" : "mal"}"><b>${r.ok ? "✓" : "✕"} ${escapar(r.nombre)}${r.llave > 1 ? " #" + r.llave : ""}</b>
+    <span>${r.ok ? `${escapar(r.modelo)} · ${r.segundos}s · ${r.modelos} modelos` : `${escapar(r.error || "error")} — ${escapar((r.detalle || "").slice(0, 110))}`}</span></div>`).join("");
+  const ok = res.filter((r) => r.ok).length;
+  decir(`${ok} de ${res.length} conexiones funcionan.`);
+}
+
 function pintarBotonVoz() {
   const b = $("#btn-silencio");
   b.innerHTML = S.vozActiva ? ICONOS.voz : ICONOS.mudo;
@@ -884,7 +895,8 @@ function iniciarUI() {
   $("#btn-recargar").onclick = async () => { aviso("PROVEEDORES", "Releyendo .env y descubriendo modelos…"); const e = await fetch("/api/recargar", { method: "POST" }).then((r) => r.json()); pintarIA(e); aviso("PROVEEDORES", `${e.total} ranuras disponibles.`); };
   $("#btn-enfriar").onclick = async () => pintarIA(await fetch("/api/reiniciar_enfriamientos", { method: "POST" }).then((r) => r.json()));
   $("#btn-nueva").onclick = async () => { await fetch("/api/nueva_conversacion", { method: "POST" }); chat.innerHTML = ""; subtitulo("Conversación nueva. La memoria a largo plazo se conserva."); };
-  $("#btn-guardar-llaves").onclick = guardarLlaves;
+  $("#btn-guardar-llaves").onclick = async () => { await guardarLlaves(); probarConexiones(); };
+  $("#btn-probar").onclick = probarConexiones;
   $("#modal-si").onclick = () => responderConfirmacion(true);
   $("#modal-no").onclick = () => responderConfirmacion(false);
   document.querySelectorAll("#estrategias button").forEach((b) => (b.onclick = async () => {

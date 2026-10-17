@@ -232,6 +232,11 @@ async def poner_llaves(cambios: dict = Body(...)):
     return router.estado()
 
 
+@app.post("/api/probar")
+async def probar():
+    return await router.probar()
+
+
 @app.post("/api/reiniciar_enfriamientos")
 async def reiniciar_enfriamientos():
     router.reiniciar_enfriamientos()
