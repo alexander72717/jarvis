@@ -115,6 +115,8 @@ GRUPOS = [
     ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
     ({"notion_ver", "notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "calendario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
     ({"poner_musica", "mis_gustos_musicales", "multimedia"}, ("música", "musica", "canción", "cancion", "spotify", "pon algo", "ponme", "playlist", "lista de", "escuchar", "artista", "banda", "álbum", "album", "concentrarme", "relajarme", "gustos")),
+    ({"buscar_archivos", "enviar_archivo", "archivos_recibidos", "guardar_en_pc"}, ("archivo", "documento", "pdf", "foto", "imagen", "video",
+      "tráeme", "traeme", "mándame", "mandame", "pásame", "pasame", "envíame", "enviame", "descarga", "guárdalo", "guardalo", "guarda", "compart")),
     ({"como_abro"}, ("cómo abres", "como abres", "dónde abres", "donde abres", "cómo abro", "como abro", "recuerdas abrir")),
     ({"enviar_al_telefono"}, ("teléfono", "telefono", "celular", "telegram", "móvil", "movil", "mándame", "mandame", "envíame", "enviame")),
 ]
@@ -737,6 +739,147 @@ async def enviar_al_telefono(ctx, mensaje):
         return "Telegram no está configurado."
     ok = await ctx.notificar(mensaje)
     return "Enviado al teléfono." if ok else "No se pudo enviar (revisa TELEGRAM_TOKEN y TELEGRAM_USUARIOS)."
+
+
+# ======================= archivos entre PC y celular =======================
+
+def _carpetas_usuario() -> list[Path]:
+    casa = Path.home()
+    nombres = ["Desktop", "Escritorio", "Documents", "Documentos", "Downloads", "Descargas", "Pictures", "Imágenes", "Videos", "Music"]
+    rutas = [casa / n for n in nombres] + [casa / "OneDrive" / n for n in nombres]
+    vistas, out = set(), []
+    for r in rutas:
+        try:
+            real = r.resolve()
+        except OSError:
+            continue
+        if r.exists() and real not in vistas:
+            vistas.add(real)
+            out.append(r)
+    return out
+
+
+def _sin_tildes(t: str) -> str:
+    import unicodedata
+
+    return unicodedata.normalize("NFKD", t.lower()).encode("ascii", "ignore").decode()
+
+
+@herramienta("buscar_archivos", "Busca archivos en el PC por nombre (escritorio, documentos, descargas, imágenes, videos, música). "
+             "Úsala antes de enviar un archivo si no sabes la ruta exacta.",
+             {"nombre": P("string", "Palabras del nombre, ej. 'factura enero' o 'pdf contrato'"),
+              "carpeta": P("string", "Carpeta concreta donde buscar (opcional)")}, ["nombre"], solo_pc=True)
+async def buscar_archivos(ctx, nombre, carpeta=None):
+    palabras = [_sin_tildes(p) for p in re.findall(r"[\w.]+", nombre) if len(p) > 1]
+    raices = [Path(os.path.expandvars(os.path.expanduser(carpeta)))] if carpeta else _carpetas_usuario()
+    saltar = {".venv", "node_modules", "__pycache__", ".git", "AppData", "site-packages"}
+
+    def buscar():
+        hallados = []
+        for raiz in raices:
+            for actual, dirs, ficheros in os.walk(raiz):
+                dirs[:] = [d for d in dirs if d not in saltar and not d.startswith(".")]
+                if len(Path(actual).relative_to(raiz).parts) > 6:
+                    dirs[:] = []
+                for f in ficheros:
+                    n = _sin_tildes(f)
+                    if all(p in n for p in palabras):
+                        ruta = Path(actual) / f
+                        try:
+                            st = ruta.stat()
+                        except OSError:
+                            continue
+                        hallados.append((st.st_mtime, ruta, st.st_size))
+                if len(hallados) > 200:
+                    break
+        return sorted(hallados, reverse=True)[:20]
+
+    res = await asyncio.to_thread(buscar)
+    if not res:
+        return f"No encontré archivos con «{nombre}» en las carpetas del usuario."
+    return "\n".join(f"- {r} ({_bytes(t)}, {datetime.fromtimestamp(m):%d/%m/%Y})" for m, r, t in res)
+
+
+@herramienta("enviar_archivo", "Envía un archivo del PC a las pantallas del usuario (aparece un botón para descargarlo en el celular). "
+             "Para 'tráeme / mándame / pásame el archivo X'.",
+             {"ruta": P("string", "Ruta completa del archivo en el PC (búscala antes con buscar_archivos)")}, ["ruta"], solo_pc=True)
+async def enviar_archivo(ctx, ruta):
+    from . import archivos
+    from .enlace import ENLACE, cabeceras, hub
+
+    p = Path(os.path.expandvars(os.path.expanduser(ruta)))
+    if not p.is_file():
+        return f"No existe el archivo {p}."
+    secretos = (p.name.lower() in (".env", "id_rsa", "id_ed25519", "id_ecdsa", "authorized_keys", "known_hosts")
+                or p.suffix.lower() in (".pem", ".key", ".kdbx", ".pfx", ".p12") or ".ssh" in [x.lower() for x in p.parts])
+    if secretos:
+        return "Ese archivo contiene llaves o contraseñas: por seguridad no lo envío a ningún dispositivo."
+    if p.stat().st_size > archivos.MAXIMO:
+        return f"El archivo pesa {_bytes(p.stat().st_size)}; el máximo es {_bytes(archivos.MAXIMO)}."
+    if ENLACE.activo:  # el PC enlazado lo sube al cerebro, que avisa a todas las pantallas
+        with open(p, "rb") as f:
+            r = await ENLACE.http.post(hub() + "/api/archivos", headers=cabeceras(), timeout=600,
+                                       files={"archivo": (p.name, f)}, data={"origen": "PC"})
+        if r.status_code != 200:
+            return f"No pude subir el archivo: {r.text[:200]}"
+        a = r.json()
+    else:
+        a = await asyncio.to_thread(archivos.guardar_ruta, p, "PC")
+        if ctx.difundir:
+            await ctx.difundir({"type": "archivo", **a})
+    return f"Listo: «{a['nombre']}» ({_bytes(a['tamano'])}) ya está disponible para descargar en tus pantallas."
+
+
+@herramienta("archivos_recibidos", "Lista los archivos compartidos recientemente entre tus dispositivos (subidos desde el celular o enviados desde el PC).")
+async def archivos_recibidos(ctx):
+    from . import archivos
+
+    lista = archivos.lista()
+    if not lista:
+        try:
+            from .enlace import ENLACE
+
+            if ENLACE.conectado:
+                lista = await ENLACE.pedir("GET", "/api/archivos")
+        except Exception:  # noqa: BLE001
+            pass
+    if not lista:
+        return "No hay archivos compartidos en los últimos 7 días."
+    return "\n".join(f"- id={a['id']} · {a['nombre']} ({_bytes(a['tamano'])}, desde {a['origen']}, {a['cuando']})" for a in lista[:20])
+
+
+@herramienta("guardar_en_pc", "Guarda en el PC un archivo compartido (por ejemplo una foto enviada desde el celular).",
+             {"archivo": P("string", "id o nombre del archivo (de archivos_recibidos); vacío = el último recibido"),
+              "carpeta": P("string", "Dónde guardarlo: Escritorio, Descargas, Documentos, Imágenes o una ruta (por defecto Descargas)")},
+             solo_pc=True)
+async def guardar_en_pc(ctx, archivo=None, carpeta="Descargas"):
+    from .enlace import ENLACE, cabeceras, hub
+
+    if not ENLACE.activo:
+        return "Este PC no está enlazado al cerebro; los archivos del celular llegan a través del servidor."
+    lista = await ENLACE.pedir("GET", "/api/archivos")
+    if not lista:
+        return "No hay archivos compartidos recientes."
+    elegido = lista[0]
+    if archivo:
+        clave = _sin_tildes(archivo)
+        elegido = next((a for a in lista if a["id"] == archivo), None) or next((a for a in lista if clave in _sin_tildes(a["nombre"])), None)
+        if not elegido:
+            return f"No encontré «{archivo}» entre los archivos recientes."
+    casa = Path.home()
+    alias = {"escritorio": "Desktop", "descargas": "Downloads", "documentos": "Documents", "imagenes": "Pictures", "imágenes": "Pictures", "fotos": "Pictures"}
+    destino = casa / alias.get(_sin_tildes(carpeta or "descargas"), "") if _sin_tildes(carpeta or "descargas") in alias else Path(os.path.expandvars(os.path.expanduser(carpeta)))
+    destino.mkdir(parents=True, exist_ok=True)
+    final = destino / elegido["nombre"]
+    n = 1
+    while final.exists():  # nunca sobrescribe
+        final = destino / f"{Path(elegido['nombre']).stem} ({n}){Path(elegido['nombre']).suffix}"
+        n += 1
+    r = await ENLACE.http.get(hub() + elegido["url"], headers=cabeceras(), timeout=600)
+    if r.status_code != 200:
+        return "No pude descargar el archivo del cerebro."
+    final.write_bytes(r.content)
+    return f"Guardé «{elegido['nombre']}» en {final}."
 
 
 # herramientas que viven en su propio módulo (se registran al importarlas)

@@ -426,3 +426,8 @@ body.limpio .barra-sup, body.limpio .barra-inf { position: relative; z-index: 3;
 
 #qr-celular { text-align: center; padding: 8px 0; }
 #qr-celular img { width: 230px; background: #fff; padding: 10px; border-radius: 10px; }
+
+/* tarjetas de archivos compartidos entre dispositivos */
+.msg.archivo { border: 1px solid var(--panel-borde); border-radius: 10px; padding: 10px 12px !important; max-width: 320px; }
+.msg.archivo img { display: block; max-width: 100%; max-height: 220px; border-radius: 6px; margin-bottom: 8px; }
+.msg.archivo .descargar { color: var(--cian); text-decoration: none; font-weight: 600; word-break: break-all; }

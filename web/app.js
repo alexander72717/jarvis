@@ -6,6 +6,7 @@ const ICONOS = {
   mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
   enviar: '<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
   detener: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="#001018"/></svg>',
+  clip: '<svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></svg>',
   ojo: '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   voz: '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
   mudo: '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6"/></svg>',
@@ -536,6 +537,10 @@ function manejar(ev) {
       chip("✕ " + ev.texto, "rot"); poner("error"); S.generando = false; botonEnviar();
       setTimeout(() => poner("espera"), 2500);
       return;
+    case "archivo":
+      tarjetaArchivo(ev);
+      if (ev.origen && ev.origen.toLowerCase() !== miDispositivo()) aviso("ARCHIVO", `${ev.nombre} · desde ${ev.origen}`);
+      return;
     case "anuncio":
       burbuja("assistant", ev.texto);
       subtitulo(ev.texto);
@@ -976,6 +981,10 @@ async function arrancar() {
 function iniciarUI() {
   $("#btn-mic").innerHTML = ICONOS.mic;
   $("#btn-ojo").innerHTML = ICONOS.ojo;
+  $("#btn-clip").innerHTML = ICONOS.clip;
+  $("#btn-clip").onclick = () => $("#subir").click();
+  $("#subir").onchange = (e) => { subirArchivos([...e.target.files]); e.target.value = ""; };
+  setTimeout(archivosCompartidos, 1500);
   $("#btn-config").innerHTML = ICONOS.ajustes;
   $("#btn-panel").innerHTML = ICONOS.panel;
   $("#btn-nueva-sup").innerHTML = ICONOS.mas;
@@ -1060,6 +1069,40 @@ function iniciarUI() {
     if (e.ctrlKey && e.code === "Space") { e.preventDefault(); escucha.alternarDirecto(); }
     if (e.key === "Escape") { callar(); alternarPanel(false); $("#ajustes").classList.add("oculto"); if (S.confirmacion) responderConfirmacion(false); }
   });
+}
+
+/* ---- archivos entre dispositivos ---- */
+function miDispositivo() { return /Android|iPhone|iPad/i.test(navigator.userAgent) ? "celular" : "pc"; }
+function pesoLegible(n) { const u = ["B", "KB", "MB", "GB"]; let i = 0; while (n >= 1024 && i < 3) { n /= 1024; i++; } return (i ? n.toFixed(1) : n) + " " + u[i]; }
+const archivosMostrados = new Set();
+function tarjetaArchivo(a) {
+  if (archivosMostrados.has(a.id)) return;
+  archivosMostrados.add(a.id);
+  const d = document.createElement("div");
+  d.className = "msg jarvis archivo";
+  const img = (a.tipo || "").startsWith("image/") ? `<img src="${a.url}" alt="">` : "";
+  d.innerHTML = `${img}<a class="descargar" href="${a.url}" download="${escapar(a.nombre)}">⬇ ${escapar(a.nombre)}</a>
+    <div class="meta">${pesoLegible(a.tamano)} · desde ${escapar(a.origen || "?")} · ${escapar(a.cuando || "")}</div>`;
+  chat.appendChild(d); alFondo(); actualizarVacio();
+}
+async function subirArchivos(lista) {
+  for (const f of lista) {
+    const fd = new FormData();
+    fd.append("archivo", f, f.name);
+    fd.append("origen", miDispositivo());
+    chip(`⬆ Enviando ${f.name}…`);
+    const r = await fetch("/api/archivos", { method: "POST", body: fd }).then((x) => x.json()).catch(() => ({ error: "sin conexión" }));
+    if (r.error) chip(`✕ ${f.name}: ${r.error}`, "rot");
+  }
+}
+async function archivosCompartidos() {
+  // al abrir desde «Compartir → JARVIS» de Android, muestra lo recién recibido
+  const p = new URLSearchParams(location.search);
+  if (!p.has("compartido")) return;
+  const lista = await fetch("/api/archivos").then((r) => r.json()).catch(() => []);
+  lista.slice(0, Math.max(1, +p.get("compartido") || 1)).reverse().forEach(tarjetaArchivo);
+  aviso("ARCHIVO", "Recibido. Dime qué hago con él, por ejemplo «guárdalo en el escritorio del PC».");
+  history.replaceState(null, "", "/");
 }
 
 /* ---- app instalable (PWA) ---- */

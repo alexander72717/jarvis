@@ -9,7 +9,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import Body, FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -23,6 +23,8 @@ from .silencio import SILENCIO
 from .telegram import Telegram
 from . import tecla
 from .enlace import ENLACE
+from .enlace import cabeceras as enlace_cabeceras
+from .enlace import hub as ENLACE_URL
 from .nodos import REGISTRO
 
 log = logging.getLogger("jarvis")
@@ -416,6 +418,68 @@ async def entrar(request: Request):
     resp.set_cookie("jarvis_pase", _nuevo_pase(request.headers.get("user-agent", "dispositivo")),
                     max_age=365 * 86400, httponly=True, secure=request.url.scheme == "https", samesite="lax")
     return resp
+
+
+# ======================= archivos entre dispositivos =======================
+from . import archivos  # noqa: E402
+
+
+async def _anunciar_archivo(a: dict):
+    await difundir({"type": "archivo", **a})
+
+
+@app.post("/api/archivos")
+async def subir_archivo(archivo: UploadFile = File(...), origen: str = Form("web")):
+    if ENLACE.conectado:  # el PC enlazado: el archivo va al cerebro
+        contenido = await archivo.read()
+        r = await ENLACE.http.post(ENLACE_URL() + "/api/archivos", headers=enlace_cabeceras(), timeout=300,
+                                   files={"archivo": (archivo.filename, contenido, archivo.content_type)}, data={"origen": origen})
+        return JSONResponse(r.json(), r.status_code)
+    try:
+        a = await archivos.guardar(archivo, origen)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, 413)
+    await _anunciar_archivo(a)
+    return a
+
+
+@app.get("/api/archivos")
+async def listar_archivos_api():
+    if ENLACE.conectado:
+        return await ENLACE.pedir("GET", "/api/archivos")
+    return archivos.lista()
+
+
+@app.get("/api/archivos/{ident}")
+async def bajar_archivo(ident: str):
+    if ENLACE.conectado:
+        r = await ENLACE.http.get(ENLACE_URL() + f"/api/archivos/{ident}", headers=enlace_cabeceras(), timeout=300)
+        return Response(r.content, r.status_code, media_type=r.headers.get("content-type"),
+                        headers={k: v for k, v in r.headers.items() if k.lower() == "content-disposition"})
+    hallado = archivos.obtener(ident)
+    if not hallado:
+        return JSONResponse({"error": "Ese archivo ya no existe (se borran a los 7 días)."}, 404)
+    ruta, a = hallado
+    return FileResponse(ruta, media_type=a["tipo"], filename=a["nombre"])
+
+
+@app.post("/compartir")
+async def compartir(request: Request):
+    """Android: Compartir → JARVIS (la app instalada recibe fotos, PDFs, lo que sea)."""
+    form = await request.form()
+    recibidos = []
+    for f in form.getlist("archivos"):
+        if hasattr(f, "filename") and f.filename:
+            try:
+                a = await archivos.guardar(f, "celular")
+            except ValueError:
+                continue
+            await _anunciar_archivo(a)
+            recibidos.append(a["nombre"])
+    texto = " ".join(str(form.get(k) or "") for k in ("titulo", "texto")).strip()
+    if texto and not recibidos:
+        await difundir({"type": "anuncio", "texto": f"Me compartiste: {texto[:300]}"})
+    return RedirectResponse(f"/?compartido={len(recibidos)}", status_code=303)
 
 
 @app.post("/api/anunciar")

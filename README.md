@@ -124,6 +124,13 @@ potente, y si la local intenta «fingir» una acción sin usar la herramienta, s
 4. En el PC: ⚙ → **📱 Conectar el celular** muestra un QR de un solo uso (15 min). Con Tailscale
    encendido en el celular, escanéalo y queda conectado.
 
+**Archivos entre dispositivos** (pasan por tu servidor, dentro de Tailscale, y se borran a los 7 días):
+- PC → celular: «mándame al celular la factura que tengo en el escritorio» → JARVIS la busca en el PC
+  y aparece una tarjeta para descargarla en todas tus pantallas.
+- Celular → PC: en Android, **Compartir → JARVIS** (app instalada) o el 📎 de la app; luego
+  «guárdalo en el escritorio del PC». Nunca sobrescribe y nunca envía archivos con llaves (.env, SSH, .pem).
+- Por seguridad del navegador, la app no puede explorar sola los archivos del celular: tú eliges qué compartir.
+
 Lo que dices en un dispositivo aparece en vivo en el otro. Desde el celular puedes pedir cosas al PC
 («baja el volumen de mi PC», «abre Spotify») si está encendido; si el servidor cae, el PC sigue solo.
 
