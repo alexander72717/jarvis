@@ -536,6 +536,11 @@ function manejar(ev) {
       chip("✕ " + ev.texto, "rot"); poner("error"); S.generando = false; botonEnviar();
       setTimeout(() => poner("espera"), 2500);
       return;
+    case "anuncio":
+      burbuja("assistant", ev.texto);
+      subtitulo(ev.texto);
+      decir(ev.texto);
+      return;
     case "externo": {
       // conversación que ocurrió en otro dispositivo (p. ej. el celular): se muestra aquí en vivo
       const icono = { celular: "📱 ", pc: "💻 " }[ev.dispositivo] || "";
@@ -1042,6 +1047,23 @@ function iniciarUI() {
     if (e.key === "Escape") { callar(); alternarPanel(false); $("#ajustes").classList.add("oculto"); if (S.confirmacion) responderConfirmacion(false); }
   });
 }
+
+/* ---- app instalable (PWA) ---- */
+let invitacionInstalar = null;
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  invitacionInstalar = e;
+  $("#btn-instalar").classList.remove("oculto");
+  if (/Android|iPhone/i.test(navigator.userAgent)) aviso("JARVIS", "Puedes instalarme como app: ⚙ → 📲 Instalar JARVIS como app.");
+});
+addEventListener("appinstalled", () => { $("#btn-instalar").classList.add("oculto"); aviso("JARVIS", "Instalado. Ya estoy en tu pantalla de inicio."); });
+$("#btn-instalar").onclick = async () => {
+  if (!invitacionInstalar) return;
+  invitacionInstalar.prompt();
+  await invitacionInstalar.userChoice;
+  invitacionInstalar = null;
+};
 
 iniciarUI();
 reloj(); setInterval(reloj, 1000);

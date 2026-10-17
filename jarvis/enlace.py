@@ -29,8 +29,8 @@ def clave() -> str:
 
 def url_ws(ruta: str, **extra) -> str:
     base = hub().replace("https://", "wss://").replace("http://", "ws://")
-    params = "&".join(f"{k}={v}" for k, v in {"clave": clave(), **extra}.items() if v)
-    return f"{base}{ruta}?{params}"
+    params = "&".join(f"{k}={v}" for k, v in extra.items() if v)
+    return f"{base}{ruta}" + (f"?{params}" if params else "")
 
 
 def cabeceras() -> dict:
@@ -54,7 +54,7 @@ class Enlace:
         nombre = config.env("NODO_NOMBRE", platform.node() or "PC")
         while True:
             try:
-                async with websockets.connect(url_ws("/nodo"), max_size=None, ping_interval=20, open_timeout=10) as ws:
+                async with websockets.connect(url_ws("/nodo"), additional_headers=cabeceras(), max_size=None, ping_interval=20, open_timeout=10) as ws:
                     await ws.send(json.dumps({"type": "registro", "nombre": nombre, "herramientas": herramientas.para_nodo()}, ensure_ascii=False))
                     self.conectado, espera = True, 3
                     log.info("conectado al cerebro %s como nodo «%s»", hub(), nombre)
@@ -82,7 +82,7 @@ class Enlace:
     # ----- la interfaz del PC habla a través del cerebro -----
     async def conversar(self, ws_ui):
         """Une la pantalla del PC con el cerebro: lo que dices va al servidor y lo que responde vuelve aquí."""
-        async with websockets.connect(url_ws("/ws", dispositivo="pc"), max_size=None, ping_interval=20, open_timeout=10) as ws_hub:
+        async with websockets.connect(url_ws("/ws", dispositivo="pc"), additional_headers=cabeceras(), max_size=None, ping_interval=20, open_timeout=10) as ws_hub:
             async def hacia_ui():
                 async for crudo in ws_hub:
                     try:

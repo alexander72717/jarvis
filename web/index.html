@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>J.A.R.V.I.S.</title>
 <link rel="icon" href="/static/jarvis.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#04090f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
+<link rel="apple-touch-icon" href="/static/icono-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/estilo.css">
@@ -124,6 +130,7 @@
   <label class="check"><input id="chk-silenciar" type="checkbox" checked> Pausar la música y silenciar el PC mientras JARVIS habla o te escucha</label>
   <label class="check"><input id="chk-ligero" type="checkbox"> Modo ligero (menos animación; se activa solo con batería)</label>
   <div class="botones-ajustes">
+    <button id="btn-instalar" class="oculto">📲 Instalar JARVIS como app</button>
     <button id="btn-celular">📱 Conectar el celular</button>
     <div id="qr-celular" class="oculto"></div>
     <button id="btn-recargar">Recargar proveedores (.env)</button>

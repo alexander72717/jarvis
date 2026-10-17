@@ -33,6 +33,7 @@ agente = Agente(router, memoria)
 telegram = Telegram(agente, router)
 silencio = SILENCIO
 clientes: set[WebSocket] = set()
+PANTALLAS: dict = {}  # ws -> dispositivo (pc / celular / web)
 SESION_WEB = "web"
 # cambia cuando se actualiza la interfaz: las ventanas abiertas se recargan solas al reconectar
 VERSION_WEB = str(int(max(f.stat().st_mtime for f in config.WEB.iterdir() if f.is_file())))
@@ -164,6 +165,28 @@ app.mount("/static", StaticFiles(directory=config.WEB), name="static")
 
 LOCALES = {"127.0.0.1", "::1", "localhost"}
 CODIGOS: dict[str, float] = {}  # códigos de emparejamiento de un solo uso -> vencimiento
+PASES = config.DATOS / "pases.json"  # sesiones de los dispositivos emparejados (no son la clave maestra)
+
+
+def _pases() -> dict:
+    try:
+        return json.loads(PASES.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _pase_valido(pase: str | None) -> bool:
+    return bool(pase) and pase in _pases()
+
+
+def _nuevo_pase(quien: str) -> str:
+    import secrets as _s
+
+    todos = _pases()
+    pase = _s.token_urlsafe(24)
+    todos[pase] = {"dispositivo": quien[:80], "desde": time.strftime("%Y-%m-%d %H:%M")}
+    PASES.write_text(json.dumps(todos, ensure_ascii=False, indent=1), encoding="utf-8")
+    return pase
 
 
 @app.middleware("http")
@@ -171,34 +194,44 @@ async def proteger(request: Request, siguiente):
     """Si JARVIS_CLAVE está definida, quien entre desde otra máquina (LAN, CasaOS) debe conocerla."""
     clave = config.env("JARVIS_CLAVE")
     origen = request.client.host if request.client else ""
-    if not clave or origen in LOCALES or request.url.path.startswith("/static"):
+    if not clave or origen in LOCALES or request.url.path.startswith("/static") or request.url.path in ("/entrar", "/manifest.webmanifest", "/sw.js"):
         return await siguiente(request)
     codigo = request.query_params.get("emparejar")
     if codigo and CODIGOS.pop(codigo, 0) > time.time():
         # el QR del celular trae un código de un solo uso; se cambia por una sesión guardada en el navegador
         resp = RedirectResponse("/", status_code=303)
-        resp.set_cookie("jarvis_clave", clave, max_age=365 * 86400, httponly=True, secure=True, samesite="lax")
+        pase = _nuevo_pase(request.headers.get("user-agent", "dispositivo"))
+        resp.set_cookie("jarvis_pase", pase, max_age=365 * 86400, httponly=True, secure=True, samesite="lax")
         return resp
-    if request.query_params.get("clave") == clave:
-        resp = await siguiente(request)
-        resp.set_cookie("jarvis_clave", clave, max_age=180 * 86400, httponly=True, samesite="strict")
-        return resp
-    if request.cookies.get("jarvis_clave") == clave or request.headers.get("x-jarvis-clave") == clave:
+    if (request.cookies.get("jarvis_clave") == clave or request.headers.get("x-jarvis-clave") == clave
+            or _pase_valido(request.cookies.get("jarvis_pase"))):
         return await siguiente(request)
     return HTMLResponse("<body style='background:#02060d;color:#00e5ff;font-family:sans-serif;display:grid;place-items:center;height:100vh'>"
-                        "<form><h2>J.A.R.V.I.S. · acceso restringido</h2><input name=clave type=password autofocus placeholder='clave'> <button>Entrar</button></form></body>", 401)
+                        "<form method=post action=/entrar><h2>J.A.R.V.I.S. · acceso restringido</h2><input name=clave type=password autofocus placeholder='clave'> <button>Entrar</button></form></body>", 401)
 
 
 def _ws_permitido(ws: WebSocket) -> bool:
     clave = config.env("JARVIS_CLAVE")
     origen = ws.client.host if ws.client else ""
     return (not clave or origen in LOCALES or ws.cookies.get("jarvis_clave") == clave
-            or ws.query_params.get("clave") == clave or ws.headers.get("x-jarvis-clave") == clave)
+            or ws.headers.get("x-jarvis-clave") == clave or _pase_valido(ws.cookies.get("jarvis_pase")))
 
 
 @app.get("/")
 async def inicio():
     return FileResponse(config.WEB / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/manifest.webmanifest")
+async def manifiesto():
+    return FileResponse(config.WEB / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def service_worker():
+    # en la raíz para que la app instalada controle todo el sitio
+    return FileResponse(config.WEB / "sw.js", media_type="text/javascript",
+                        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
 
 
 @app.get("/api/ping")
@@ -227,7 +260,7 @@ def _estado_local(hora):
         "ia": router.estado(), "herramientas": len(herramientas.todas()), "telegram": telegram.activo,
         "recordatorios": memoria.recordatorios(), "pc": config.ES_WINDOWS, "version": VERSION_WEB,
         "ia_local": {"modo": config.env("IA_LOCAL_MODO", "auto"), "disponible": router.hay_local(), "cuotas_bajas": router.cuotas_bajas()},
-        "nodos": REGISTRO.estado(), "cerebro": "este equipo",
+        "nodos": REGISTRO.estado(), "cerebro": "este equipo", "pantallas": sorted(PANTALLAS.values()),
     }
 
 
@@ -371,6 +404,29 @@ async def nueva_conversacion():
     return {"ok": True}
 
 
+@app.post("/entrar")
+async def entrar(request: Request):
+    """Acceso manual con la clave (por POST, nunca en la URL): da un pase guardado en el navegador."""
+    form = await request.form()
+    clave = config.env("JARVIS_CLAVE")
+    if not clave or form.get("clave") != clave:
+        await asyncio.sleep(1.5)  # frena a quien intente adivinar
+        return RedirectResponse("/", status_code=303)
+    resp = RedirectResponse("/", status_code=303)
+    resp.set_cookie("jarvis_pase", _nuevo_pase(request.headers.get("user-agent", "dispositivo")),
+                    max_age=365 * 86400, httponly=True, secure=request.url.scheme == "https", samesite="lax")
+    return resp
+
+
+@app.post("/api/anunciar")
+async def anunciar(datos: dict = Body(...)):
+    """JARVIS dice algo en TODAS las pantallas conectadas (PC y celular)."""
+    texto = str(datos.get("texto", "")).strip()[:600]
+    if texto:
+        await difundir({"type": "anuncio", "texto": texto})
+    return {"ok": bool(texto), "pantallas": [PANTALLAS.get(w, "?") for w in clientes]}
+
+
 @app.get("/api/qr_celular")
 async def qr_celular():
     """(En el PC) Pide al cerebro un código de un solo uso y lo devuelve como QR para escanear con el celular."""
@@ -439,6 +495,7 @@ async def ws_conversacion(ws: WebSocket):
         except Exception as e:  # noqa: BLE001  el cerebro no respondió: se conversa en local
             log.warning("no pude conversar a través del cerebro (%s); sigo en local", e)
     dispositivo = ws.query_params.get("dispositivo") or ("celular" if "mobile" in ws.headers.get("user-agent", "").lower() else "web")
+    PANTALLAS[ws] = dispositivo
     pendientes: dict[str, asyncio.Future] = {}
     tarea: asyncio.Task | None = None
 
@@ -490,5 +547,6 @@ async def ws_conversacion(ws: WebSocket):
         pass
     finally:
         clientes.discard(ws)
+        PANTALLAS.pop(ws, None)
         if tarea and not tarea.done():
             tarea.cancel()
