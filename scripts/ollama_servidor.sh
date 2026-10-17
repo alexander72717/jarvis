@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # IA local de JARVIS en el servidor CasaOS (Ollama en Docker), con límites para no estorbar a las demás apps.
-#   ssh pixi@servidor 'bash -s' < scripts/ollama_servidor.sh
+#   ssh usuario@servidor 'bash -s' < scripts/ollama_servidor.sh
 #
 # - CPU: máximo 4 de 8 hilos y prioridad baja (cpu-shares 256): cede ante cualquier otra app.
 # - RAM: máximo 5 GB. Un modelo cargado a la vez, una petición a la vez, se descarga tras 10 min sin uso.
