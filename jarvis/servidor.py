@@ -1,5 +1,7 @@
 """Servidor web local: interfaz HUD, WebSocket de conversación y API."""
 import asyncio
+import os
+import subprocess
 import json
 import logging
 import time
@@ -18,6 +20,7 @@ from .proveedores import CATALOGO
 from .router import Router, SinProveedores
 from .silencio import Silenciador
 from .telegram import Telegram
+from . import tecla
 
 log = logging.getLogger("jarvis")
 
@@ -76,6 +79,42 @@ async def tarea_router():
             await difundir({"type": "ia", **router.estado()})
 
 
+URL_APP = f"http://127.0.0.1:{config.PUERTO}"
+
+
+def _traer_ventana() -> bool:
+    """Pone delante la ventana de JARVIS (si existe)."""
+    import ctypes
+
+    u = ctypes.windll.user32
+    hwnd = u.FindWindowW(None, "J.A.R.V.I.S.")
+    if not hwnd:
+        return False
+    if u.IsIconic(hwnd):
+        u.ShowWindow(hwnd, 9)  # restaurar si estaba minimizada
+    u.keybd_event(0x12, 0, 0, 0)  # un Alt "fantasma" deja a Windows ceder el foco
+    u.SetForegroundWindow(hwnd)
+    u.keybd_event(0x12, 0, 2, 0)
+    return True
+
+
+async def tecla_pulsada():
+    """Tecla rombo: si la interfaz está abierta, escucha (o calla); si no, la abre lista para escuchar."""
+    log.info("tecla rombo pulsada (%d pantallas abiertas)", len(clientes))
+    if clientes:
+        await asyncio.to_thread(_traer_ventana)
+        await difundir({"type": "tecla"})
+        return
+    from . import aperturas
+
+    ruta = aperturas.ruta_navegador("edge") or aperturas.ruta_navegador("chrome")
+    url = URL_APP + "/?tecla=1"
+    if ruta:
+        subprocess.Popen([ruta, f"--app={url}", "--window-size=1100,860", "--autoplay-policy=no-user-gesture-required"])
+    else:
+        os.startfile(url)
+
+
 async def tarea_recordatorios():
     while True:
         for r in memoria.vencidos():
@@ -92,6 +131,7 @@ async def vida(app):
     await router.iniciar()
     await silencio.recuperar_tras_cierre()
     tareas = [asyncio.create_task(t()) for t in (tarea_metricas, tarea_router, tarea_recordatorios, silencio.vigilante)]
+    tareas.append(asyncio.create_task(tecla.escuchar(tecla_pulsada)))
     if telegram.activo:
         tareas.append(asyncio.create_task(telegram.bucle()))
     log.info("JARVIS listo en http://%s:%s", config.HOST, config.PUERTO)

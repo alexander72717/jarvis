@@ -21,7 +21,7 @@ if errorlevel 1 (
 )
 :listo
 rem Ventana de app sin barras (Edge o Chrome). Ambos traen reconocimiento de voz.
-where msedge >nul 2>nul && (start "" msedge --app=http://127.0.0.1:8765 --window-size=1500,920 & exit /b)
-if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app=http://127.0.0.1:8765 --window-size=1500,920 & exit /b)
-if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --app=http://127.0.0.1:8765 --window-size=1500,920 & exit /b)
+where msedge >nul 2>nul && (start "" msedge --app=http://127.0.0.1:8765 --window-size=1500,920 --autoplay-policy=no-user-gesture-required & exit /b)
+if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app=http://127.0.0.1:8765 --window-size=1500,920 --autoplay-policy=no-user-gesture-required & exit /b)
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --app=http://127.0.0.1:8765 --window-size=1500,920 --autoplay-policy=no-user-gesture-required & exit /b)
 start "" http://127.0.0.1:8765

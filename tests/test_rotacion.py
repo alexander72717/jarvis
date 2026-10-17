@@ -107,6 +107,18 @@ async def prueba_llamadas_paralelas_gemini():
     print("✓ separa llamadas paralelas que llegan con el mismo índice (Gemini)")
 
 
+def prueba_firmas_gemini():
+    from jarvis.router import firmas_para
+    hist = [{"role": "assistant", "content": "", "tool_calls": [
+        {"id": "a", "type": "function", "function": {"name": "x", "arguments": "{}"}, "extra_content": {"google": {"thought_signature": "FIRMA"}}},
+        {"id": "b", "type": "function", "function": {"name": "y", "arguments": "{}"}}]}]
+    g = firmas_para("gemini", hist)[0]["tool_calls"]
+    assert g[0]["extra_content"]["google"]["thought_signature"] == "FIRMA"
+    assert g[1]["extra_content"]["google"]["thought_signature"] == "skip_thought_signature_validator"
+    assert all("extra_content" not in c for c in firmas_para("groq", hist)[0]["tool_calls"])
+    print("✓ devuelve la firma de pensamiento solo a Gemini 3")
+
+
 async def prueba_sin_tools_usa_protocolo():
     vistos = []
 
@@ -166,6 +178,7 @@ def prueba_esperas():
 
 async def main():
     prueba_esperas()
+    prueba_firmas_gemini()
     for p in (prueba_rota_en_429, prueba_cuota_diaria_por_llave, prueba_herramientas_en_streaming, prueba_llamadas_paralelas_gemini,
               prueba_sin_tools_usa_protocolo, prueba_corte_a_mitad, prueba_todos_agotados):
         await p()

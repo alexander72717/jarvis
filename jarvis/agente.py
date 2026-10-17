@@ -116,7 +116,8 @@ class Agente:
                 except json.JSONDecodeError:
                     a = {}
                 c["args"] = json.dumps(a if isinstance(a, dict) else {}, ensure_ascii=False)
-            llamadas = [{"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["args"]}} for c in fin["llamadas"]]
+            llamadas = [{"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["args"]},
+                         **({"extra_content": c["extra"]} if c.get("extra") else {})} for c in fin["llamadas"]]
             m_asist = {"role": "assistant", "content": fin["texto"] or "", "tool_calls": llamadas}
             mensajes.append(m_asist)
             self.memoria.guardar_mensaje(sesion, m_asist)

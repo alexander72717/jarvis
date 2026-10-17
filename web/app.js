@@ -528,6 +528,13 @@ function manejar(ev) {
       chip("✕ " + ev.texto, "rot"); poner("error"); S.generando = false; botonEnviar();
       setTimeout(() => poner("espera"), 2500);
       return;
+    case "tecla":
+      // tecla rombo del Victus: si habla, se calla; si no, escucha una orden
+      iniciarAudio();
+      if (!$("#arranque").classList.contains("fuera")) { $("#btn-iniciar").click(); setTimeout(() => escucha.alternarDirecto(), 600); return; }
+      if (hablando || colaVoz.length) { callar(); return; }
+      escucha.alternarDirecto();
+      return;
     case "recordatorio":
       sonido.alerta();
       aviso("RECORDATORIO", ev.texto, true);
@@ -908,6 +915,10 @@ async function arrancar() {
   await linea("> Todos los sistemas operativos.");
   const b = $("#btn-iniciar"); b.disabled = false; b.textContent = "INICIAR SISTEMA";
   b.focus();
+  if (new URLSearchParams(location.search).get("tecla")) {
+    // abierta con la tecla rombo: arranca sola y se pone a escuchar
+    setTimeout(() => { b.click(); setTimeout(() => escucha.alternarDirecto(), 900); }, 200);
+  }
   b.onclick = () => {
     iniciarAudio();
     $("#arranque").classList.add("fuera");

@@ -164,6 +164,26 @@ def aplanar(mensajes: list, conservar_imagenes: bool) -> list:
     return fusion
 
 
+def firmas_para(proveedor: str, mensajes: list) -> list:
+    """Gemini 3 exige la 'thought_signature' de cada llamada; el resto de proveedores no la acepta."""
+    if not any(m.get("tool_calls") for m in mensajes):
+        return mensajes
+    out = []
+    for m in mensajes:
+        if m.get("tool_calls"):
+            llamadas = []
+            for c in m["tool_calls"]:
+                c = {k: v for k, v in c.items() if k != "extra_content"}
+                if proveedor == "gemini":
+                    # si la llamada la hizo otro proveedor no hay firma: Google acepta este comodín documentado
+                    extra = next((x.get("extra_content") for x in m["tool_calls"] if x.get("id") == c.get("id")), None)
+                    c["extra_content"] = extra or {"google": {"thought_signature": "skip_thought_signature_validator"}}
+                llamadas.append(c)
+            m = {**m, "tool_calls": llamadas}
+        out.append(m)
+    return out
+
+
 def instrucciones_protocolo(tools: list) -> str:
     lineas = [
         "\n\n## Herramientas",
@@ -471,6 +491,8 @@ class Router:
         prov = r.prov
         nativo = bool(tools) and r.tools
         msgs = mensajes if nativo else aplanar(mensajes, vision)
+        if nativo:
+            msgs = firmas_para(prov["id"], msgs)
         if tools and not nativo:
             msgs = [dict(m) for m in msgs]
             msgs[0]["content"] = _texto_de(msgs[0]["content"]) + instrucciones_protocolo(tools)
@@ -590,6 +612,8 @@ class Router:
                                 acc["name"] = nombre
                             if tid and not acc["id"]:
                                 acc["id"] = tid
+                            if tc.get("extra_content"):  # Gemini 3: firma de pensamiento que hay que devolver
+                                acc["extra"] = tc["extra_content"]
                             a = f.get("arguments")
                             if a:
                                 acc["args"] += a if isinstance(a, str) else json.dumps(a)
@@ -601,7 +625,8 @@ class Router:
             if self.activa == r.id:
                 self.activa = None
 
-        llamadas = [{"name": v["name"], "args": v["args"] or "{}"} for _, v in sorted(acumulado.items()) if v["name"]]
+        llamadas = [{"name": v["name"], "args": v["args"] or "{}", **({"extra": v["extra"]} if v.get("extra") else {})}
+                    for _, v in sorted(acumulado.items()) if v["name"]]
         if tools and not nativo:
             limpio, extra = extraer_protocolo(texto)
             if extra:
