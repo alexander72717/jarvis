@@ -50,6 +50,8 @@ CATALOGO = [
             {"id": "openai/gpt-oss-20b", "rapido": True},
             {"id": "llama-3.1-8b-instant", "rapido": True},
         ],
+        # Groq renueva su catálogo seguido: adopta solos los Qwen 3.x y Kimi que aparezcan
+        "patrones_extra": [r"^qwen/qwen3[\w.-]*$", r"^moonshotai/kimi-k2[\w.-]*$"],
         "stt": "whisper-large-v3-turbo",
     },
     {

@@ -23,6 +23,7 @@ Estilo:
 {trato}
 Reglas:
 - Usa las herramientas en vez de inventar. Para cualquier dato en tiempo real (clima, noticias, precios, resultados) consulta una herramienta.
+- Nunca inventes datos, citas, cifras ni "datos curiosos": si no estás seguro, búscalo con 'buscar_web' o dilo con honestidad.
 - Puedes encadenar varias herramientas antes de responder.
 - Si te piden recordar algo o descubres un dato duradero importante del usuario, usa 'recordar'.
 - Si una herramienta falla, dilo con honestidad y propone alternativa.
@@ -72,12 +73,19 @@ class Agente:
         msg_usuario = {"role": "user", "content": contenido}
         self.memoria.guardar_mensaje(sesion, msg_usuario)
 
-        historial = self.memoria.historial(sesion, 28)
+        historial = self.memoria.historial(sesion, 20)
+        # resultados de herramientas de turnos pasados: solo un resumen (ahorra miles de tokens por petición)
+        for m in historial[:-1]:
+            if m["role"] == "tool" and len(m["content"]) > 300:
+                m["content"] = m["content"][:300] + "…"
         if imagenes and historial:
             historial[-1] = msg_usuario  # la imagen solo viaja en este turno
         mensajes = [{"role": "system", "content": await self.sistema(canal, texto)}] + historial
         ctx = Contexto(router=self.router, memoria=self.memoria, canal=canal, sesion=sesion, difundir=self.difundir, notificar=self.notificar)
-        esquemas = herramientas.esquemas()
+        # herramientas relevantes para lo que se habla (incluye las usadas en los últimos turnos)
+        usadas = {c["function"]["name"] for m in historial[-8:] for c in (m.get("tool_calls") or [])}
+        previo = next((m["content"] for m in reversed(historial[:-1]) if m["role"] == "assistant" and isinstance(m.get("content"), str)), "")
+        esquemas = herramientas.esquemas(f"{texto} {previo[-300:]}", usadas)
         final, meta = "", {}
 
         for paso in range(10):

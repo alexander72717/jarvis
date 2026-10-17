@@ -65,12 +65,51 @@ def disponibles() -> dict:
     return {k: v for k, v in HERRAMIENTAS.items() if not (v["solo_pc"] and not config.ES_WINDOWS)}
 
 
-def esquemas() -> list:
+def _corto(texto: str, maximo: int) -> str:
+    """Las descripciones viajan en CADA petición: se recortan para ahorrar tokens de la capa gratis."""
+    texto = texto.strip()
+    if len(texto) <= maximo:
+        return texto
+    corte = texto[:maximo]
+    fin = max(corte.rfind(". "), corte.rfind(": "))
+    return corte[: fin + 1] if fin > maximo // 2 else corte.rstrip() + "…"
+
+
+# Mandar las 31 herramientas en cada petición cuesta ~2.400 tokens: se mandan solo las relevantes.
+NUCLEO = {"fecha_hora", "buscar_web", "calcular", "recordar", "buscar_memoria", "crear_recordatorio", "abrir", "estado_ia"}
+GRUPOS = [
+    ({"clima"}, ("clima", "tiempo hace", "llov", "lluvia", "temperatura", "calor", "frío", "frio", "pronóstico", "pronostico", "sol ")),
+    ({"leer_web", "noticias", "wikipedia"}, ("noticia", "página", "pagina", "web", "http", "www", "wikipedia", "quién es", "quien es", "qué es", "que es", "lee ", "artículo", "articulo", "historia de")),
+    ({"multimedia"}, ("volumen", "música", "musica", "canción", "cancion", "pausa", "siguiente", "anterior", "sube", "baja", "silencia", "reproduce")),
+    ({"ver_pantalla", "portapapeles"}, ("pantalla", "mira", "ves ", "ves?", "qué ves", "copia", "pega", "portapapeles", "esto")),
+    ({"estado_sistema", "energia"}, ("pc", "computador", "ordenador", "cpu", "ram", "batería", "bateria", "sistema", "apaga", "reinicia", "bloquea", "suspende", "lento", "memoria del")),
+    ({"listar_archivos", "leer_archivo", "escribir_archivo", "ejecutar_comando"}, ("archivo", "carpeta", "escritorio", "documento", "comando", "powershell", "script", "instala", "crea un", "guarda en")),
+    ({"olvidar", "listar_recordatorios", "cancelar_recordatorio"}, ("olvida", "recordatorio", "pendiente", "cancela", "borra")),
+    ({"servidor_estado", "servidor_comando", "servidor_encender"}, ("servidor", "casaos", "server", "docker", "contenedor", "enciende")),
+    ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
+    ({"enviar_al_telefono"}, ("teléfono", "telefono", "celular", "telegram", "móvil", "movil", "mándame", "mandame", "envíame", "enviame")),
+]
+
+
+def relevantes(contexto: str, usadas: set | None = None) -> set:
+    t = f" {contexto.lower()} "
+    elegidas = set(NUCLEO) | (usadas or set())
+    for nombres, palabras in GRUPOS:
+        if any(p in t for p in palabras):
+            elegidas |= nombres
+    return elegidas
+
+
+def esquemas(contexto: str | None = None, usadas: set | None = None) -> list:
+    filtro = relevantes(contexto, usadas) if contexto is not None else None
     out = []
     for k, v in disponibles().items():
-        f = {"name": k, "description": v["desc"]}
+        if filtro is not None and k not in filtro:
+            continue
+        f = {"name": k, "description": _corto(v["desc"], 240)}
         if v["params"]:  # Gemini rechaza objetos sin propiedades: si no hay parámetros se omite
-            f["parameters"] = {"type": "object", "properties": v["params"], "required": v["req"]}
+            props = {n: {**d, "description": _corto(d.get("description", ""), 60)} for n, d in v["params"].items()}
+            f["parameters"] = {"type": "object", "properties": props, "required": v["req"]}
         out.append({"type": "function", "function": f})
     return out
 

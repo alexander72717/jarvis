@@ -91,6 +91,22 @@ async def prueba_herramientas_en_streaming():
     print("✓ arma llamadas a herramientas que llegan en trozos")
 
 
+async def prueba_llamadas_paralelas_gemini():
+    # Gemini manda dos llamadas distintas con el mismo índice 0
+    def h(req):
+        return sse(
+            delta(tool={"index": 0, "id": "a1", "function": {"name": "clima", "arguments": '{"ciudad": "Cali"}'}}),
+            delta(tool={"index": 0, "id": "b2", "function": {"name": "estado_sistema", "arguments": "{}"}}),
+        )
+
+    r = router_falso(h, [("a", "m1")])
+    tools = [{"type": "function", "function": {"name": "clima", "description": "d"}}]
+    evs = await recoger(r.stream([{"role": "system", "content": "s"}, {"role": "user", "content": "x"}], tools))
+    nombres = [c["name"] for c in evs[-1]["llamadas"]]
+    assert nombres == ["clima", "estado_sistema"], nombres
+    print("✓ separa llamadas paralelas que llegan con el mismo índice (Gemini)")
+
+
 async def prueba_sin_tools_usa_protocolo():
     vistos = []
 
@@ -150,7 +166,7 @@ def prueba_esperas():
 
 async def main():
     prueba_esperas()
-    for p in (prueba_rota_en_429, prueba_cuota_diaria_por_llave, prueba_herramientas_en_streaming,
+    for p in (prueba_rota_en_429, prueba_cuota_diaria_por_llave, prueba_herramientas_en_streaming, prueba_llamadas_paralelas_gemini,
               prueba_sin_tools_usa_protocolo, prueba_corte_a_mitad, prueba_todos_agotados):
         await p()
     print("\nTodas las pruebas pasaron.")

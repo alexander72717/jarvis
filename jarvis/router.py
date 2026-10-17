@@ -111,7 +111,7 @@ def clasificar(estado: int, texto: str, cabeceras=None) -> ErrorProveedor:
     if estado == 429 or any(w in t for w in ("rate limit", "rate_limit", "free limit", "free_limit", "limit reached", "quota", "resource_exhausted", "too many requests")):
         diario = any(w in t for w in ("per day", "daily", "perday", "rpd", "tpd", "per-day", "free-models-per-day", "monthly"))
         return ErrorProveedor("cuota_diaria" if diario else "limite", texto, espera)
-    if estado in (401, 403) or "invalid api key" in t or "unauthorized" in t:
+    if estado in (401, 403) or any(w in t for w in ("invalid api key", "unauthorized", "valid api key", "api key not valid", "api_key_invalid", "invalid_api_key", "incorrect api key")):
         return ErrorProveedor("llave", texto)
     if estado in (400, 422) and any(w in t for w in ("tool", "function")):
         return ErrorProveedor("sin_tools", texto)
@@ -289,7 +289,7 @@ class Router:
         url = prov.get("lista_url") or f"{base}/models"
         timeout = 3 if prov["id"] == "ollama" else 12
         r = await self.cliente.get(url, headers=cab, timeout=timeout)
-        if r.status_code in (401, 403):
+        if r.status_code in (401, 403) or (r.status_code == 400 and "api key" in r.text.lower()):
             return preferidos, "llave rechazada"
         if r.status_code != 200:
             return preferidos, ""
@@ -376,6 +376,8 @@ class Router:
             base = r.rango
             if nivel == "rapido":
                 base = base * 0.3 + (0 if r.rapido else 40)
+            elif r.rapido:
+                base += 25  # inventan más: solo para la charla principal si no queda nada mejor
             if con_tools and not r.tools:
                 base += 12
             r.recientes = [t for t in r.recientes if ahora - t < 60]
@@ -416,7 +418,11 @@ class Router:
         if duracion:
             hasta = ahora + min(duracion, 24 * 3600)
             afectadas = [r]
-            if e.tipo in ("cuota_diaria", "llave", "creditos") and r.prov.get("cuota_por_llave") or e.tipo == "llave":
+            if e.tipo == "vacio" and "respuesta no válida" in e.detalle:
+                # no es un modelo: todo el servicio responde algo que no es una IA
+                hasta = ahora + min(1800 * r.fallos, 6 * 3600)
+                motivo = "servicio caído"
+            if (e.tipo in ("cuota_diaria", "llave", "creditos") and r.prov.get("cuota_por_llave")) or e.tipo == "llave" or motivo == "servicio caído":
                 afectadas = [x for x in self.ranuras if x.prov is r.prov and x.llave == r.llave]
             for x in afectadas:
                 x.enfriar_hasta, x.motivo = max(x.enfriar_hasta, hasta), motivo
@@ -482,6 +488,7 @@ class Router:
         t0 = time.time()
         r.recientes.append(t0)
         texto, acumulado, usage = "", {}, None
+        por_indice: dict = {}  # índice que manda el proveedor -> llamada acumulada
         filtro = FiltroPensamiento()
         decidido = nativo or not tools  # en modo protocolo esperamos a saber si es llamada
         retenido = ""
@@ -497,11 +504,23 @@ class Router:
                 self._avisar()
                 tipo = resp.headers.get("content-type", "")
                 if "event-stream" not in tipo:
-                    datos = json.loads(await resp.aread())
-                    trozos = [{"choices": [{"delta": c.get("message", {})} for c in datos.get("choices", [])], "usage": datos.get("usage")}]
-                    if "error" in datos:
-                        raise clasificar(int(datos["error"].get("code") or 500) if str(datos["error"].get("code", "")).isdigit() else 500, json.dumps(datos["error"]))
+                    crudo = (await resp.aread()).decode("utf-8", "replace")
                     lineas = None
+                    try:
+                        datos = json.loads(crudo)
+                    except ValueError:
+                        datos = None
+                    if isinstance(datos, dict):
+                        if "error" in datos:
+                            err = datos["error"] if isinstance(datos["error"], dict) else {"message": str(datos["error"])}
+                            raise clasificar(int(err["code"]) if str(err.get("code", "")).isdigit() else 500, json.dumps(err))
+                        trozos = [{"choices": [{"delta": c.get("message", {})} for c in datos.get("choices", [])], "usage": datos.get("usage")}]
+                    elif "data:" in crudo:
+                        # streaming real pero con content-type equivocado
+                        trozos = [json.loads(l[5:].strip()) for l in crudo.splitlines()
+                                  if l.startswith("data:") and l[5:].strip() not in ("", "[DONE]") and l[5:].strip().startswith("{")]
+                    else:
+                        raise ErrorProveedor("vacio", f"respuesta no válida ({tipo or 'sin tipo'}): {crudo[:120]}")
                 else:
                     trozos = None
                     lineas = resp.aiter_lines()
@@ -558,13 +577,19 @@ class Router:
                                         retenido = ""
                         for j, tc in enumerate(d.get("tool_calls") or []):
                             idx = tc.get("index", j)
-                            acc = acumulado.setdefault(idx, {"name": "", "args": ""})
                             f = tc.get("function") or {}
-                            nombre = f.get("name")
-                            if nombre and not acc["name"]:
+                            nombre, tid = f.get("name"), tc.get("id")
+                            acc = acumulado.get(por_indice.get(idx))
+                            # Gemini manda llamadas paralelas con el mismo índice: un id distinto
+                            # o un nombre nuevo sobre una llamada ya nombrada es OTRA llamada
+                            if (acc is None or (tid and acc["id"] and tid != acc["id"])
+                                    or (nombre and acc["name"] and not (nombre == acc["name"] and not acc["args"]))):
+                                por_indice[idx] = len(acumulado)
+                                acc = acumulado[por_indice[idx]] = {"name": "", "args": "", "id": tid or ""}
+                            if nombre:
                                 acc["name"] = nombre
-                            elif nombre and nombre != acc["name"]:
-                                acc["name"] += nombre
+                            if tid and not acc["id"]:
+                                acc["id"] = tid
                             a = f.get("arguments")
                             if a:
                                 acc["args"] += a if isinstance(a, str) else json.dumps(a)
@@ -634,8 +659,11 @@ class Router:
                 except ErrorProveedor as e:
                     self._penalizar(r, e)
                     res.update(modelo=r.modelo, error=r.motivo or e.tipo, detalle=e.detalle[:160])
-                    if e.tipo not in ("modelo", "sin_tools", "vacio"):
+                    if e.tipo in ("llave", "creditos", "cuota_diaria"):  # problema de la cuenta: otro modelo no ayuda
                         return res
+                except Exception as e:  # noqa: BLE001  (una prueba nunca debe tumbar las demás)
+                    res.update(modelo=r.modelo, error="error interno", detalle=f"{type(e).__name__}: {e}"[:160])
+                    return res
             return res
 
         resultados = await asyncio.gather(*(una(k, v) for k, v in grupos.items()))
