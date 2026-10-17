@@ -184,3 +184,116 @@ async def notion_crear_nota(ctx, titulo, contenido, dentro_de):
     except RuntimeError as e:
         return str(e)
     return f"Creé «{titulo}» en Notion: {datos.get('url', '')}"
+
+
+# ======================= lectura sin llave (app de Notion + accesibilidad) =======================
+# Para espacios de trabajo donde no se pueden crear integraciones: JARVIS abre la página en la app
+# de Notion y lee lo que muestra con UI Automation. Solo lectura. Notion (Electron) debe abrirse con
+# --force-renderer-accessibility para exponer el contenido; JARVIS ya lo abre así.
+
+import os  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+
+EXE = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Notion\Notion.exe")
+BANDERA = "--force-renderer-accessibility"
+
+
+def abrir_app() -> bool:
+    if not os.path.exists(EXE):
+        return False
+    subprocess.Popen([EXE, BANDERA])
+    return True
+
+
+def _ventana():
+    import uiautomation as auto
+
+    for w in auto.GetRootControl().GetChildren():
+        if not w.ClassName.startswith("Chrome_WidgetWin"):
+            continue
+        try:
+            import psutil
+
+            if psutil.Process(w.ProcessId).name().lower() == "notion.exe":
+                return w
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+def _nodos(c, prof=0, limite=80) -> int:
+    n = 1
+    if prof < 45:
+        for h in c.GetChildren():
+            n += _nodos(h, prof + 1)
+            if n > limite:
+                break
+    return n
+
+
+def _leer_ventana(v, maximo=9000) -> list[str]:
+    lineas, vistos = [], set()
+
+    def recorrer(c, prof=0):
+        if prof > 70 or sum(len(x) for x in lineas) > maximo:
+            return
+        for h in c.GetChildren():
+            n = re.sub(r"\s+", " ", (h.Name or "")).strip()
+            tipo = h.ControlTypeName
+            if n and n not in vistos and tipo in ("HyperlinkControl", "TextControl", "TabItemControl", "HeaderItemControl", "DataItemControl"):
+                vistos.add(n)
+                # los textos sueltos que ya están dentro de un enlace (tarjeta de calendario) no se repiten
+                if tipo == "HyperlinkControl" or len(n) > 2 and not any(n in l for l in lineas[-12:]):
+                    lineas.append(("• " if tipo == "HyperlinkControl" else "") + n)
+            recorrer(h, prof + 1)
+
+    recorrer(v)
+    return lineas
+
+
+def _ver(pagina: str | None, filtro: str | None) -> str:
+    import uiautomation as auto
+
+    with auto.UIAutomationInitializerInThread():
+        v = _ventana()
+        if v is None:
+            if not abrir_app():
+                return "No encontré la app de Notion instalada."
+            for _ in range(20):
+                time.sleep(1)
+                v = _ventana()
+                if v and _nodos(v) > 60:
+                    break
+        if v is None:
+            return "Notion no abrió a tiempo."
+        if _nodos(v) <= 60:
+            return ("Notion está abierto pero sin accesibilidad activada (se abrió sin JARVIS). "
+                    "Ciérralo y pídeme «abre Notion» para que pueda leerlo.")
+        ya_abierta = pagina and pagina.lower().strip() in v.Name.lower()
+        if pagina and not ya_abierta:
+            v.SetActive()
+            time.sleep(0.4)
+            auto.SendKeys("{Ctrl}p", waitTime=0.6)  # búsqueda rápida de Notion
+            auto.SendKeys(pagina.replace("{", "").replace("}", ""), interval=0.01, waitTime=1.8)
+            auto.SendKeys("{Enter}", waitTime=3.0)
+            v = _ventana() or v
+        titulo = v.Name
+        lineas = _leer_ventana(v)
+    if filtro:
+        f = filtro.lower()
+        lineas = [l for l in lineas if f in l.lower()]
+        if not lineas:
+            return f"En «{titulo}» no aparece nada con «{filtro}» en lo que está visible."
+    return f"# {titulo} (leído de la app de Notion)\n" + "\n".join(lineas)[:9000]
+
+
+@herramienta("notion_ver", "Lee lo que muestra la app de Notion (páginas, calendario de clases, tareas). Sin llave: funciona en "
+             "cualquier espacio de trabajo. Opcional: abrir otra página por su título y filtrar líneas (ej. una fecha '18 de octubre').",
+             {"pagina": P("string", "Título de la página a abrir (vacío = la que está abierta)"),
+              "filtro": P("string", "Solo líneas que contengan este texto, ej. '18 de octubre de 2026' o un nombre")}, solo_pc=True)
+async def notion_ver(ctx, pagina=None, filtro=None):
+    import asyncio
+
+    return await asyncio.to_thread(_ver, pagina, filtro)

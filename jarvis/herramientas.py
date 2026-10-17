@@ -61,8 +61,13 @@ def herramienta(nombre, descripcion, params=None, requeridos=(), peligrosa=False
     return deco
 
 
+NOTION_API = {"notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}
+
+
 def disponibles() -> dict:
-    return {k: v for k, v in HERRAMIENTAS.items() if not (v["solo_pc"] and not config.ES_WINDOWS)}
+    sin_notion = not config.env("NOTION_TOKEN")  # sin llave, JARVIS lee Notion desde la app (notion_ver)
+    return {k: v for k, v in HERRAMIENTAS.items()
+            if not (v["solo_pc"] and not config.ES_WINDOWS) and not (sin_notion and k in NOTION_API)}
 
 
 def _corto(texto: str, maximo: int) -> str:
@@ -87,7 +92,7 @@ GRUPOS = [
     ({"olvidar", "listar_recordatorios", "cancelar_recordatorio"}, ("olvida", "recordatorio", "pendiente", "cancela", "borra")),
     ({"servidor_estado", "servidor_comando", "servidor_encender"}, ("servidor", "casaos", "server", "docker", "contenedor", "enciende")),
     ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
-    ({"notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "calendario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
+    ({"notion_ver", "notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "calendario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
     ({"poner_musica", "mis_gustos_musicales", "multimedia"}, ("música", "musica", "canción", "cancion", "spotify", "pon algo", "ponme", "playlist", "lista de", "escuchar", "artista", "banda", "álbum", "album", "concentrarme", "relajarme", "gustos")),
     ({"como_abro"}, ("cómo abres", "como abres", "dónde abres", "donde abres", "cómo abro", "como abro", "recuerdas abrir")),
     ({"enviar_al_telefono"}, ("teléfono", "telefono", "celular", "telegram", "móvil", "movil", "mándame", "mandame", "envíame", "enviame")),

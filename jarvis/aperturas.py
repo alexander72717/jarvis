@@ -136,6 +136,11 @@ def buscar_app(clave: str) -> tuple[str, str] | None:
 
 
 def lanzar_app(app_id: str):
+    if app_id == "notion.id":
+        from . import notion  # Notion siempre con accesibilidad, para que JARVIS pueda leerlo
+
+        if notion.abrir_app():
+            return
     if os.path.exists(app_id):
         os.startfile(app_id)
     else:
