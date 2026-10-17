@@ -98,6 +98,16 @@ Abre `http://IP-del-servidor:8765`; la primera vez pide la clave que aparece en 
 como último respaldo para todos tus dispositivos. Para que el PC consulte el servidor, llena
 `SERVIDOR_HOST`/`SERVIDOR_USUARIO` y configura una llave SSH (`ssh-keygen` + `ssh-copy-id`).
 
+## IA local en el servidor (ilimitada)
+
+`scripts/ollama_servidor.sh` instala Ollama en el CasaOS con límites (máx. 4 hilos con prioridad baja,
+5 GB de RAM, un modelo, se descarga tras 10 min sin uso) y usa la GPU NVIDIA si existe.
+Modo por defecto `IA_LOCAL_MODO=auto`: la conversación va a la nube (1–3 s) y la IA local hace el
+trabajo de fondo (aprender de ti) cuando nadie está hablando; si las cuotas gratis bajan del 30 %,
+JARVIS pasa solo a «local primero». Otros modos: `siempre`, `fondo`, `no` (también en Ajustes).
+En modo local, lo difícil (programar, explicar, analizar, pantalla, Notion…) sigue yendo a una IA
+potente, y si la local intenta «fingir» una acción sin usar la herramienta, se descarta y escala.
+
 ## JARVIS para tus amigos
 
 Versión autónoma: no usa tus llaves ni se conecta a tu PC. Cada amigo puede poner sus llaves gratis

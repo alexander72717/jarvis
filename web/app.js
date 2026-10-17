@@ -126,6 +126,13 @@ function necesitaSilencio() {
   if (!S.silenciarPC) return false;
   return hablando || colaVoz.length > 0 || S.modo === "escuchando" || escucha.directo || escucha.esperandoComando || (S.generando && S.porVoz && S.vozActiva);
 }
+let ultimoCalentado = 0;
+function precalentar() {
+  // despierta la IA local del servidor mientras el usuario habla o escribe (cada 3 min como mucho)
+  if (Date.now() - ultimoCalentado < 180000) return;
+  ultimoCalentado = Date.now();
+  fetch("/api/precalentar", { method: "POST" }).catch(() => {});
+}
 function pedirSilencio(activar) {
   fetch("/api/silencio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activar, navegador: navegadorJarvis() }) }).catch(() => {});
 }
@@ -352,6 +359,7 @@ function poner(modo, texto) {
   document.body.dataset.modo = modo;
   $("#estado").textContent = texto || TEXTO_MODO[modo] || modo.toUpperCase();
   if (modo === "espera") { S.provActual = null; $("#entrada").placeholder = PLACEHOLDER; }
+  if (modo === "escuchando") precalentar();
   pintarPildora();
   revisarSilencio();
 }
@@ -805,6 +813,8 @@ async function abrirAjustes() {
     sel.innerHTML = voces.map((v) => `<option value="${v.id}" ${v.id === actual ? "selected" : ""}>${v.id.replace("Neural", "")} · ${v.genero === "Male" ? "masculina" : "femenina"}</option>`).join("");
   }
   pintarLlaves();
+  const estadoLocal = await fetch("/api/estado").then((r) => r.json()).catch(() => null);
+  if (estadoLocal && estadoLocal.ia_local) $("#sel-local").value = estadoLocal.ia_local.modo;
   const mems = await fetch("/api/memorias").then((r) => r.json()).catch(() => []);
   $("#memorias").innerHTML = mems.length ? "" : '<div class="vacio">Aún no sé nada de ti. Cuéntame cosas y las recordaré.</div>';
   for (const m of mems) {
@@ -956,7 +966,8 @@ function iniciarUI() {
   if (!S.info || !S.info.pc) { /* el botón de pantalla solo sirve en el PC */ }
 
   const entrada = $("#entrada");
-  entrada.addEventListener("input", () => { entrada.style.height = "auto"; entrada.style.height = Math.min(entrada.scrollHeight, 160) + "px"; });
+  entrada.addEventListener("input", () => {
+    precalentar(); entrada.style.height = "auto"; entrada.style.height = Math.min(entrada.scrollHeight, 160) + "px"; });
   entrada.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const t = entrada.value; entrada.value = ""; entrada.style.height = "auto"; enviar(t); }
   });
@@ -999,6 +1010,10 @@ function iniciarUI() {
   const nuevaConversacion = async () => { await fetch("/api/nueva_conversacion", { method: "POST" }); chat.innerHTML = ""; actualizarVacio(); subtitulo("Conversación nueva. La memoria a largo plazo se conserva."); };
   $("#btn-nueva").onclick = nuevaConversacion;
   $("#btn-nueva-sup").onclick = nuevaConversacion;
+  $("#sel-local").onchange = async (e) => {
+    await fetch("/api/llaves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ IA_LOCAL_MODO: e.target.value }) });
+    aviso("IA LOCAL", e.target.options[e.target.selectedIndex].text);
+  };
   $("#btn-guardar-llaves").onclick = async () => { await guardarLlaves(); probarConexiones(); };
   $("#btn-probar").onclick = probarConexiones;
   $("#modal-si").onclick = () => responderConfirmacion(true);

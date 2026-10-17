@@ -108,6 +108,17 @@ def relevantes(contexto: str, usadas: set | None = None) -> set:
     return elegidas
 
 
+# La IA local (CPU) reutiliza lo ya procesado si el inicio de la petición es idéntico:
+# por eso recibe SIEMPRE esta misma lista, en este mismo orden. Lo demás va a las IAs potentes.
+LOCALES = ["fecha_hora", "clima", "buscar_web", "calcular", "recordar", "buscar_memoria", "crear_recordatorio",
+           "listar_recordatorios", "abrir", "poner_musica", "multimedia", "estado_sistema", "noticias", "wikipedia", "estado_ia"]
+
+
+def esquemas_locales() -> list:
+    todas = {e["function"]["name"]: e for e in esquemas()}
+    return [todas[n] for n in LOCALES if n in todas]
+
+
 def esquemas(contexto: str | None = None, usadas: set | None = None) -> list:
     filtro = relevantes(contexto, usadas) if contexto is not None else None
     out = []

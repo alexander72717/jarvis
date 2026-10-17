@@ -112,6 +112,14 @@
   <label>Velocidad de voz<input id="vel-voz" type="range" min="-30" max="40" step="5" value="5"><span id="vel-txt">+5%</span></label>
   <label class="check"><input id="chk-voz" type="checkbox" checked> Responder con voz</label>
   <label class="check"><input id="chk-sonidos" type="checkbox" checked> Efectos de sonido</label>
+  <label>IA local del servidor
+    <select id="sel-local">
+      <option value="auto">Automático: nube primero, local si escasean las cuotas</option>
+      <option value="siempre">Local primero (más lento, ahorra más tokens)</option>
+      <option value="fondo">Solo trabajo de fondo</option>
+      <option value="no">Apagada</option>
+    </select>
+  </label>
   <label class="check"><input id="chk-hud" type="checkbox"> Interfaz HUD clásica (paneles siempre visibles)</label>
   <label class="check"><input id="chk-silenciar" type="checkbox" checked> Pausar la música y silenciar el PC mientras JARVIS habla o te escucha</label>
   <label class="check"><input id="chk-ligero" type="checkbox"> Modo ligero (menos animación; se activa solo con batería)</label>

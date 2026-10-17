@@ -191,6 +191,7 @@ async def estado():
         "voz": config.voz(), "saludo": "Buenos días" if 5 <= hora < 12 else "Buenas tardes" if hora < 19 else "Buenas noches",
         "ia": router.estado(), "herramientas": len(herramientas.disponibles()), "telegram": telegram.activo,
         "recordatorios": memoria.recordatorios(), "pc": config.ES_WINDOWS, "version": VERSION_WEB,
+        "ia_local": {"modo": config.env("IA_LOCAL_MODO", "auto"), "disponible": router.hay_local(), "cuotas_bajas": router.cuotas_bajas()},
     }
 
 
@@ -239,7 +240,7 @@ async def recargar():
 
 
 EXTRA_EDITABLES = {"CLOUDFLARE_ACCOUNT_ID", "OLLAMA_URL", "TELEGRAM_TOKEN", "TELEGRAM_USUARIOS", "USUARIO_NOMBRE", "USUARIO_TRATAMIENTO",
-                   "CIUDAD", "PAIS", "VOZ", "NOTION_TOKEN", "SPOTIFY_CLIENT_ID", "SERVIDOR_HOST", "SERVIDOR_USUARIO", "SERVIDOR_MAC", "JARVIS_NOMBRE"}
+                   "CIUDAD", "PAIS", "VOZ", "NOTION_TOKEN", "SPOTIFY_CLIENT_ID", "IA_LOCAL_MODO", "SERVIDOR_HOST", "SERVIDOR_USUARIO", "SERVIDOR_MAC", "JARVIS_NOMBRE"}
 
 
 def _editables() -> set:
@@ -276,6 +277,13 @@ async def poner_llaves(cambios: dict = Body(...)):
     ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
     await router.iniciar()
     return router.estado()
+
+
+@app.post("/api/precalentar")
+async def precalentar():
+    """La interfaz avisa que el usuario empezó a hablar o escribir: la IA local se prepara."""
+    asyncio.create_task(agente.precalentar())
+    return {"ok": True}
 
 
 @app.post("/api/silencio")

@@ -338,7 +338,11 @@ class Router:
             return gratis[:10], ""
 
         if prov["id"] == "ollama":
-            return [{"id": m["id"], "rapido": True} for m in lista if "embed" not in m["id"]], ""
+            elegido = config.env("OLLAMA_MODELO")
+            modelos = [m["id"] for m in lista if "embed" not in m["id"]]
+            if elegido:
+                modelos = [m for m in modelos if m == elegido or m.split(":")[0] + ":" + m.split(":")[-1] == elegido] or modelos
+            return [{"id": m, "rapido": True} for m in modelos[:1 if elegido else 3]], ""
 
         ids = {str(m.get("id", "")).removeprefix("models/") for m in lista if isinstance(m, dict)}
         elegidos = [m for m in preferidos if m["id"] in ids]
@@ -385,10 +389,24 @@ class Router:
             except Exception:  # noqa: BLE001
                 pass
 
+    def cuotas_bajas(self, umbral: float = 0.3) -> bool:
+        """True si quedan libres menos del 30 % de los modelos en la nube (sin contar local ni el de emergencia)."""
+        ahora = time.time()
+        nube = [r for r in self.ranuras if r.prov["id"] not in ("ollama", "pollinations")]
+        if not nube:
+            return True
+        return sum(r.libre(ahora) for r in nube) / len(nube) < umbral
+
+    def hay_local(self) -> bool:
+        ahora = time.time()
+        return any(r.prov["id"] == "ollama" and r.libre(ahora) for r in self.ranuras)
+
     # ----- selección -----
     def elegir(self, nivel: str, vision: bool, con_tools: bool, excluir: set) -> Ranura | None:
         ahora = time.time()
         cands = [r for r in self.ranuras if r.id not in excluir and r.libre(ahora) and (r.vision or not vision)]
+        if nivel == "local":  # solo la IA del servidor; si no está, quien llama escala a las potentes
+            cands = [r for r in cands if r.prov["id"] == "ollama"]
         if not cands:
             return None
 
@@ -517,7 +535,8 @@ class Router:
         pensando_avisado = False
         primer_token = None
         try:
-            async with self.cliente.stream("POST", url, json=cuerpo, headers=cab, timeout=httpx.Timeout(120, connect=10, read=60)) as resp:
+            espera_lectura = 45 if prov["id"] == "ollama" else 60  # si la local no arranca en 45 s, se escala a una potente
+            async with self.cliente.stream("POST", url, json=cuerpo, headers=cab, timeout=httpx.Timeout(240, connect=10, read=espera_lectura)) as resp:
                 if resp.status_code != 200:
                     cuerpo_err = (await resp.aread()).decode("utf-8", "replace")
                     raise clasificar(resp.status_code, cuerpo_err, resp.headers)
@@ -655,9 +674,9 @@ class Router:
         yield {"type": "fin", "texto": texto, "llamadas": llamadas, "ranura": r.id, "proveedor": prov["nombre"],
                "modelo": r.modelo, "segundos": round(total, 2), "tokens": int(tokens)}
 
-    async def completar(self, mensajes: list, nivel: str = "rapido", vision: bool = False) -> str:
+    async def completar(self, mensajes: list, nivel: str = "rapido", vision: bool = False, herramientas_fijas: list | None = None) -> str:
         texto = ""
-        async for ev in self.stream(mensajes, None, nivel, vision):
+        async for ev in self.stream(mensajes, herramientas_fijas, nivel, vision):
             if ev["type"] == "reset":
                 texto = ""
             elif ev["type"] == "delta":

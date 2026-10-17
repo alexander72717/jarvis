@@ -196,6 +196,7 @@ CATALOGO = [
         "base": "{OLLAMA_URL}",
         "base_defecto": {"OLLAMA_URL": "http://localhost:11434/v1"},
         "sin_llave": True,
+        "cuerpo_extra": {"temperature": 0.2},  # el modelo pequeño acierta más las herramientas si improvisa poco
         "registro": "https://ollama.com/download",
         "prioridad": 7,
         "modelos": [],  # todos los modelos que tengas descargados
