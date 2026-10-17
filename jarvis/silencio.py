@@ -118,6 +118,15 @@ class Silenciador:
             log.info("silencio: pausé %s, silencié %d programas", self.pausadas or "nada", len(self.silenciadas))
             return self.estado()
 
+    async def pausar_ahora(self, app_id: str):
+        """Pausa una sesión que empezó a sonar mientras JARVIS hablaba (se reanuda al restaurar)."""
+        try:
+            for s in (await self._gestor()).get_sessions():
+                if s.source_app_user_model_id == app_id and s.get_playback_info().playback_status == REPRODUCIENDO:
+                    await s.try_pause_async()
+        except Exception as e:  # noqa: BLE001
+            log.debug("pausar_ahora: %s", e)
+
     async def restaurar(self) -> dict:
         async with self.lock:
             if not self.activo:
@@ -147,3 +156,6 @@ class Silenciador:
 
     def estado(self) -> dict:
         return {"activo": self.activo, "pausadas": self.pausadas, "silenciadas": len(self.silenciadas)}
+
+
+SILENCIO = Silenciador()

@@ -18,7 +18,8 @@ from .agente import Agente
 from .memoria import Memoria
 from .proveedores import CATALOGO
 from .router import Router, SinProveedores
-from .silencio import Silenciador
+from . import musica
+from .silencio import SILENCIO
 from .telegram import Telegram
 from . import tecla
 
@@ -28,7 +29,7 @@ router = Router()
 memoria = Memoria()
 agente = Agente(router, memoria)
 telegram = Telegram(agente, router)
-silencio = Silenciador()
+silencio = SILENCIO
 clientes: set[WebSocket] = set()
 SESION_WEB = "web"
 # cambia cuando se actualiza la interfaz: las ventanas abiertas se recargan solas al reconectar
@@ -132,6 +133,7 @@ async def vida(app):
     await silencio.recuperar_tras_cierre()
     tareas = [asyncio.create_task(t()) for t in (tarea_metricas, tarea_router, tarea_recordatorios, silencio.vigilante)]
     tareas.append(asyncio.create_task(tecla.escuchar(tecla_pulsada)))
+    tareas.append(asyncio.create_task(musica.observador()))
     if telegram.activo:
         tareas.append(asyncio.create_task(telegram.bucle()))
     log.info("JARVIS listo en http://%s:%s", config.HOST, config.PUERTO)
@@ -237,7 +239,7 @@ async def recargar():
 
 
 EXTRA_EDITABLES = {"CLOUDFLARE_ACCOUNT_ID", "OLLAMA_URL", "TELEGRAM_TOKEN", "TELEGRAM_USUARIOS", "USUARIO_NOMBRE", "USUARIO_TRATAMIENTO",
-                   "CIUDAD", "PAIS", "VOZ", "SERVIDOR_HOST", "SERVIDOR_USUARIO", "SERVIDOR_MAC", "JARVIS_NOMBRE"}
+                   "CIUDAD", "PAIS", "VOZ", "NOTION_TOKEN", "SPOTIFY_CLIENT_ID", "SERVIDOR_HOST", "SERVIDOR_USUARIO", "SERVIDOR_MAC", "JARVIS_NOMBRE"}
 
 
 def _editables() -> set:

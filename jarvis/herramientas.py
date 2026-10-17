@@ -87,6 +87,8 @@ GRUPOS = [
     ({"olvidar", "listar_recordatorios", "cancelar_recordatorio"}, ("olvida", "recordatorio", "pendiente", "cancela", "borra")),
     ({"servidor_estado", "servidor_comando", "servidor_encender"}, ("servidor", "casaos", "server", "docker", "contenedor", "enciende")),
     ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
+    ({"notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "calendario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
+    ({"poner_musica", "mis_gustos_musicales", "multimedia"}, ("música", "musica", "canción", "cancion", "spotify", "pon algo", "ponme", "playlist", "lista de", "escuchar", "artista", "banda", "álbum", "album", "concentrarme", "relajarme", "gustos")),
     ({"como_abro"}, ("cómo abres", "como abres", "dónde abres", "donde abres", "cómo abro", "como abro", "recuerdas abrir")),
     ({"enviar_al_telefono"}, ("teléfono", "telefono", "celular", "telegram", "móvil", "movil", "mándame", "mandame", "envíame", "enviame")),
 ]
@@ -444,9 +446,28 @@ async def estado_sistema(ctx):
               "donde": P("string", "Solo si el usuario lo dijo: app o web", ["app", "web"]),
               "navegador": P("string", "Solo si el usuario lo dijo: brave, chrome, edge, firefox u opera")}, ["objetivo"], solo_pc=True)
 async def abrir(ctx, objetivo, donde=None, navegador=None):
-    from . import aperturas
+    from . import aperturas, musica
+
+    if aperturas.normalizar(objetivo) == "spotify" and donde != "app" and not navegador and config.ES_WINDOWS:
+        return await musica.poner()  # «abre Spotify» = pon algo que me guste
 
     return await asyncio.to_thread(aperturas.abrir, objetivo, donde, navegador)
+
+
+@herramienta("poner_musica", "Pone música en Spotify. Sin petición elige algo según lo que el usuario suele escuchar; "
+             "con petición busca y reproduce eso (canción, artista, lista, género o ánimo: 'algo para concentrarme').",
+             {"peticion": P("string", "Qué poner (opcional)")}, solo_pc=True)
+async def poner_musica(ctx, peticion=None):
+    from . import musica
+
+    return await musica.poner(peticion)
+
+
+@herramienta("mis_gustos_musicales", "Resume qué música escucha más el usuario (aprendido de lo que suena en el PC).")
+async def mis_gustos_musicales(ctx):
+    from . import musica
+
+    return await asyncio.to_thread(musica.resumen_gustos)
 
 
 @herramienta("como_abro", "Muestra cómo JARVIS recuerda abrir cada cosa (app del PC o web y en qué navegador).")
@@ -671,3 +692,7 @@ async def enviar_al_telefono(ctx, mensaje):
         return "Telegram no está configurado."
     ok = await ctx.notificar(mensaje)
     return "Enviado al teléfono." if ok else "No se pudo enviar (revisa TELEGRAM_TOKEN y TELEGRAM_USUARIOS)."
+
+
+# herramientas que viven en su propio módulo (se registran al importarlas)
+from . import notion  # noqa: E402,F401

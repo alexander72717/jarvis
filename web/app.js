@@ -821,7 +821,8 @@ async function abrirAjustes() {
 
 const DATOS = [
   ["USUARIO_NOMBRE", "Tu nombre", "Samuel"], ["USUARIO_TRATAMIENTO", "Cómo quieres que te llame (opcional)", "señor, jefe, Sam…"],
-  ["CIUDAD", "Ciudad para el clima (vacío = automático)", "Medellín"], ["TELEGRAM_TOKEN", "Token del bot de Telegram (@BotFather)", "123456:ABC…"],
+  ["CIUDAD", "Ciudad para el clima (vacío = automático)", "Medellín"], ["NOTION_TOKEN", "Notion: secreto de tu integración (notion.so/profile/integrations)", "ntn_…"],
+  ["TELEGRAM_TOKEN", "Token del bot de Telegram (@BotFather)", "123456:ABC…"],
   ["TELEGRAM_USUARIOS", "Tu ID de Telegram (el bot te lo dice)", "123456789"], ["SERVIDOR_HOST", "IP del servidor CasaOS", "192.168.1.50"],
   ["SERVIDOR_USUARIO", "Usuario SSH del servidor", "casaos"], ["SERVIDOR_MAC", "MAC del servidor (Wake-on-LAN)", "AA:BB:CC:DD:EE:FF"],
   ["OLLAMA_URL", "Ollama (en el PC o en CasaOS)", "http://192.168.1.50:11434/v1"], ["CLOUDFLARE_ACCOUNT_ID", "Cloudflare: Account ID", ""],
