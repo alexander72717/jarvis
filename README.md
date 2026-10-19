@@ -151,9 +151,18 @@ copias de cada pieza o de todo.
 - «Planear» muestra platos, tiempos y gramos sin enviar nada; «Imprimir» pregunta antes de enviar.
   Por voz: «imprime 3 copias del cuerpo 4 en negro con soportes y 4 paredes».
 
+**Vigilancia**: cada 3 minutos JARVIS revisa las impresoras a las que mandó algo y te avisa en todas tus
+pantallas (y en Telegram) si una se detiene por un error —con su código, p. ej. «Introduzca el filamento…
+[07FF-8006]»—, si lleva 15 min sin avanzar o cuando termina. Los platos en espera se mandan solos cuando se
+libera una impresora con el color. Por voz: «¿cómo van las impresiones?», «pausa / reanuda / cancela la de la
+Taller». Para esto activa en Bambu Studio *Preferencias → Administración de varios dispositivos* (y elige
+ahí hasta 6 impresoras): JARVIS lee esa tabla con el OCR de Windows. Todo trabaja en segundo plano: no mueve
+tu ratón (solo trae Bambu Studio al frente un instante al enviar o confirmar). Déjalo abierto detrás de tus
+ventanas, sin minimizar.
+
 Requisitos: **Bambu Studio** instalado con tu cuenta iniciada. No hace falta el «Modo desarrollador»: conservas
 la nube y Bambu Handy, porque JARVIS lamina con la línea de comandos de Bambu Studio y envía cada plato desde su
-ventana «Enviar trabajo de impresión» (mueve el ratón mientras lo hace). Placa por defecto: PEI texturizada.
+ventana «Enviar trabajo de impresión». Placa por defecto: PEI texturizada.
 Un solo color por plato; las casillas vacías o con un material incompatible se ignoran.
 
 ## JARVIS para tus amigos

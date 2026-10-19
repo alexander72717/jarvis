@@ -16,3 +16,8 @@ winrt-Windows.Foundation>=3.0; sys_platform == "win32"
 winrt-Windows.Foundation.Collections>=3.0; sys_platform == "win32"
 winrt-Windows.Media.Control>=3.0; sys_platform == "win32"
 uiautomation>=2.0; sys_platform == "win32"
+# OCR de Windows (gratis, sin internet) para leer las listas que Bambu Studio dibuja como imagen
+winrt-Windows.Media.Ocr>=3.0; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging>=3.0; sys_platform == "win32"
+winrt-Windows.Storage.Streams>=3.0; sys_platform == "win32"
+winrt-Windows.Globalization>=3.0; sys_platform == "win32"

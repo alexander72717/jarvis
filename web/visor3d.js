@@ -41,6 +41,7 @@ function montar(caja, url, nombreArchivo) {
     </div>
     <div class="v3d-botones">
       <button data-accion="impresoras_3d">Ver impresoras</button>
+      <button data-accion="estado_impresoras_3d">¿Cómo van?</button>
       <button data-accion="impresion_3d_planear">Planear</button>
       <button data-accion="imprimir_3d" class="v3d-imprimir">Imprimir</button>
     </div>
@@ -181,14 +182,15 @@ function montar(caja, url, nombreArchivo) {
     const b = e.target.closest("button[data-accion]");
     if (!b) return;
     const { a, elegidas } = argumentos();
-    if (b.dataset.accion !== "impresoras_3d" && !elegidas.length) { salida.hidden = false; salida.textContent = "Elige al menos una pieza."; return; }
+    const sinArgs = ["impresoras_3d", "estado_impresoras_3d"].includes(b.dataset.accion);
+    if (!sinArgs && !elegidas.length) { salida.hidden = false; salida.textContent = "Elige al menos una pieza."; return; }
     if (b.dataset.accion === "imprimir_3d" && !confirm(`¿Mandar a imprimir ${elegidas.length} pieza(s) × ${a.copias}${a.color ? " en " + a.color : ""}?`)) return;
     const botones = caja.querySelectorAll(".v3d-botones button");
     botones.forEach((x) => (x.disabled = true));
     salida.hidden = false;
-    salida.textContent = { impresoras_3d: "Revisando impresoras (unos 10 s por impresora)…", impresion_3d_planear: "Orientando, organizando platos y laminando…",
+    salida.textContent = { impresoras_3d: "Revisando impresoras (unos 10 s por impresora)…", estado_impresoras_3d: "Leyendo el estado de las impresoras…", impresion_3d_planear: "Orientando, organizando platos y laminando…",
       imprimir_3d: "Laminando y enviando a las impresoras… (JARVIS mueve el ratón en Bambu Studio)" }[b.dataset.accion];
-    try { salida.textContent = await herramienta(b.dataset.accion, b.dataset.accion === "impresoras_3d" ? {} : a); }
+    try { salida.textContent = await herramienta(b.dataset.accion, sinArgs ? {} : a); }
     catch (err) { salida.textContent = "No se pudo: " + err.message; }
     botones.forEach((x) => (x.disabled = false));
   });

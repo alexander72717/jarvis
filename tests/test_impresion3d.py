@@ -81,6 +81,14 @@ def main():
     assert i.nombre_color((250, 250, 250)) == "blanco" and i.nombre_color((255, 100, 20)) == "naranja"
     assert i._modelo_de("Taller – X1 Carbon") == "X1 Carbon" and i._modelo_de("Casa – A1") == "A1"
     print("✓ colores y modelo de impresora")
+
+    # el OCR confunde guiones y letras: la clave de cada impresora es la primera palabra normalizada
+    assert i._clave("Taller — A1") == i._clave("Taller – A1") == i._clave("Taller - A1(Fuera de lí...") == "taller"
+    # la bobina externa solo si no hay otra casilla con ese color (puede estar configurada sin filamento)
+    imp = {"ams": [{"casilla": "Externo", "color": "negro", "rgb": (20, 20, 20)}, {"casilla": "A2", "color": "negro", "rgb": (30, 30, 30)}]}
+    assert i._casilla_para(imp, i.color_pedido("negro"))["casilla"] == "A2"
+    assert i._casilla_para({"ams": imp["ams"][:1]}, i.color_pedido("negro"))["casilla"] == "Externo"
+    print("✓ nombres leídos por OCR y preferencia del AMS sobre la bobina externa")
     print("\nTodas las pruebas pasaron.")
 
 

@@ -144,6 +144,19 @@ async def tarea_recordatorios():
         await asyncio.sleep(3)
 
 
+async def avisar_impresion(texto: str):
+    """Avisos de las impresoras 3D: en todas las pantallas (a través del cerebro si el PC está enlazado) y en Telegram."""
+    try:
+        if ENLACE.activo:
+            await ENLACE.pedir("POST", "/api/anunciar", json={"texto": texto})
+        else:
+            await difundir({"type": "anuncio", "texto": texto})
+    except Exception as e:  # noqa: BLE001
+        log.warning("no pude anunciar «%s»: %s", texto, e)
+    if telegram.activo:
+        await telegram.notificar(texto)
+
+
 @asynccontextmanager
 async def vida(app):
     await router.iniciar()
@@ -152,6 +165,10 @@ async def vida(app):
     tareas.append(asyncio.create_task(tecla.escuchar(tecla_pulsada)))
     tareas.append(asyncio.create_task(musica.observador()))
     tareas.append(asyncio.create_task(ENLACE.mantener(router, memoria)))
+    if config.ES_WINDOWS:
+        from . import impresion3d
+
+        tareas.append(asyncio.create_task(impresion3d.vigilante(avisar_impresion)))
     if telegram.activo:
         tareas.append(asyncio.create_task(telegram.bucle()))
     log.info("JARVIS listo en http://%s:%s", config.HOST, config.PUERTO)
@@ -429,7 +446,7 @@ async def _anunciar_archivo(a: dict):
 
 
 # Botones del visor 3D: el clic en «Imprimir» ya es la confirmación del usuario (pregunta antes en la página)
-ACCIONES_UI = {"impresoras_3d", "impresion_3d_planear", "imprimir_3d"}
+ACCIONES_UI = {"impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d"}
 
 
 @app.post("/api/herramienta/{nombre}")

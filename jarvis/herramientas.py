@@ -116,7 +116,7 @@ GRUPOS = [
     ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
     ({"notion_ver", "notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "calendario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
     ({"poner_musica", "mis_gustos_musicales", "multimedia"}, ("música", "musica", "canción", "cancion", "spotify", "pon algo", "ponme", "playlist", "lista de", "escuchar", "artista", "banda", "álbum", "album", "concentrarme", "relajarme", "gustos")),
-    ({"modelo_3d_abrir", "impresoras_3d", "impresion_3d_planear", "imprimir_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina", "plato", "pieza", "relleno", "soporte", "pared", "pendiente")),
+    ({"modelo_3d_abrir", "impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d", "controlar_impresion_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina", "plato", "pieza", "relleno", "soporte", "pared", "pendiente", "pausa", "reanuda", "cancela", "cómo va", "como va", "progreso")),
     ({"buscar_archivos", "enviar_archivo", "archivos_recibidos", "guardar_en_pc"}, ("archivo", "documento", "pdf", "foto", "imagen", "video",
       "tráeme", "traeme", "mándame", "mandame", "pásame", "pasame", "envíame", "enviame", "descarga", "guárdalo", "guardalo", "guarda", "compart")),
     ({"como_abro"}, ("cómo abres", "como abres", "dónde abres", "donde abres", "cómo abro", "como abro", "recuerdas abrir")),

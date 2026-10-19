@@ -12,9 +12,11 @@ import asyncio
 import ctypes
 import hashlib
 import json
+import logging
 import math
 import os
 import re
+import struct
 import subprocess
 import time
 from array import array
@@ -31,6 +33,7 @@ DIALOGO = "Enviar trabajo de impresión"
 TRABAJOS = config.DATOS / "impresion3d"
 # UI Automation y los clics van siempre por un mismo hilo, uno a la vez
 _hilo = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bambu")
+log = logging.getLogger("jarvis.impresion3d")
 ESTADO = {"modelo": None, "plan": None, "hwnd": None, "abierto": None, "impresoras": [], "cuando": 0.0}
 
 # ───────────────────────── colores ─────────────────────────
@@ -117,16 +120,73 @@ def _centro(r):
     return (r.left + r.right) // 2, (r.top + r.bottom) // 2
 
 
-def _clic(x, y):
-    import uiautomation as auto
+# Los clics se mandan como mensajes a la ventana de Bambu Studio y las capturas se toman de la propia ventana:
+# así JARVIS trabaja en segundo plano sin mover tu ratón y aunque tengas otra ventana encima.
+_u32 = ctypes.windll.user32 if os.name == "nt" else None
+_g32 = ctypes.windll.gdi32 if os.name == "nt" else None
+if _u32:  # en 64 bits los HDC/HBITMAP no caben en un int de C: hay que declarar los tipos
+    _V = ctypes.c_void_p
+    for f, args, res in ((_u32.GetWindowDC, [_V], _V), (_u32.ReleaseDC, [_V, _V], ctypes.c_int),
+                         (_u32.PrintWindow, [_V, _V, ctypes.c_uint], ctypes.c_int),
+                         (_g32.CreateCompatibleDC, [_V], _V), (_g32.CreateCompatibleBitmap, [_V, ctypes.c_int, ctypes.c_int], _V),
+                         (_g32.SelectObject, [_V, _V], _V), (_g32.DeleteObject, [_V], ctypes.c_int), (_g32.DeleteDC, [_V], ctypes.c_int),
+                         (_g32.GetDIBits, [_V, _V, ctypes.c_uint, ctypes.c_uint, _V, _V, ctypes.c_uint], ctypes.c_int)):
+        f.argtypes, f.restype = args, res
 
-    auto.Click(int(x), int(y), waitTime=0.4)
+
+def _raiz(ref) -> int:
+    h = ref if isinstance(ref, int) else (ref.NativeWindowHandle or ref.GetTopLevelControl().NativeWindowHandle)
+    return h
 
 
-def _captura(r):
-    from PIL import ImageGrab
+def _hwnd_en(h: int, x: int, y: int) -> int:
+    """La subventana más profunda de `h` bajo el punto de pantalla (x, y)."""
+    for _ in range(30):
+        p = wintypes.POINT(int(x), int(y))
+        _u32.ScreenToClient(h, ctypes.byref(p))
+        hijo = _u32.ChildWindowFromPointEx(h, p, 0x0001 | 0x0004)  # CWP_SKIPINVISIBLE | CWP_SKIPTRANSPARENT
+        if not hijo or hijo == h:
+            return h
+        h = hijo
+    return h
 
-    return ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom), all_screens=True)
+
+def _clic(x, y, ref):
+    h = _hwnd_en(_raiz(ref), x, y)
+    p = wintypes.POINT(int(x), int(y))
+    _u32.ScreenToClient(h, ctypes.byref(p))
+    lp = ((p.y & 0xFFFF) << 16) | (p.x & 0xFFFF)
+    for msg, wp in ((0x0200, 0), (0x0201, 1), (0x0202, 0)):  # WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP
+        _u32.PostMessageW(h, msg, wp, lp)
+    time.sleep(0.4)
+
+
+def _tocar(ctrl):
+    _clic(*_centro(ctrl.BoundingRectangle), ctrl)
+
+
+def _captura(r, ref):
+    """Imagen del rectángulo de pantalla r tomada de su ventana (PrintWindow), aunque esté tapada."""
+    from PIL import Image
+
+    raiz = _u32.GetAncestor(_raiz(ref), 2)  # GA_ROOT
+    rv = wintypes.RECT()
+    _u32.GetWindowRect(raiz, ctypes.byref(rv))
+    w, h = rv.right - rv.left, rv.bottom - rv.top
+    g32 = _g32
+    dc = _u32.GetWindowDC(raiz)
+    mem = g32.CreateCompatibleDC(dc)
+    bmp = g32.CreateCompatibleBitmap(dc, w, h)
+    g32.SelectObject(mem, bmp)
+    _u32.PrintWindow(raiz, mem, 2)  # PW_RENDERFULLCONTENT
+    cab = ctypes.create_string_buffer(struct.pack("<IiiHHIIiiII", 40, w, -h, 1, 32, 0, 0, 0, 0, 0, 0), 44)
+    buf = ctypes.create_string_buffer(w * h * 4)
+    g32.GetDIBits(mem, bmp, 0, h, buf, cab, 0)
+    g32.DeleteObject(bmp)
+    g32.DeleteDC(mem)
+    _u32.ReleaseDC(raiz, dc)
+    img = Image.frombuffer("RGBA", (w, h), buf.raw, "raw", "BGRA", 0, 1).convert("RGB")
+    return img.crop((r.left - rv.left, r.top - rv.top, r.right - rv.left, r.bottom - rv.top))
 
 
 def _color_medio(img, fx, fy, radio=3):
@@ -153,7 +213,7 @@ def _verde(c) -> bool:
     r = c.BoundingRectangle
     if r.width() <= 0:
         return False
-    rgb = _color_medio(_captura(r), 0.2, 0.5, 2)
+    rgb = _color_medio(_captura(r, c), 0.2, 0.5, 2)
     return rgb[1] > rgb[0] + 50 and rgb[1] > rgb[2] + 20
 
 
@@ -184,14 +244,40 @@ def _cerrar_mia():
             c = _control(hw)
             no = next((x for x, _ in _recorrer(c, 6) if (x.Name or "").lower() in ("no guardar", "no", "don't save", "descartar")), None)
             if no:
-                _clic(*_centro(no.BoundingRectangle))
+                _tocar(no)
                 break
+
+
+def _mias() -> set[int]:
+    try:
+        return set(json.loads((TRABAJOS / "ventanas.json").read_text()))
+    except (OSError, ValueError):
+        return set()
+
+
+def _anotar(h: int | None, quitar=False):
+    """Las ventanas que abre JARVIS quedan anotadas para poder cerrarlas aunque se reinicie."""
+    mias = _mias() & {x for x, _ in _ventanas()}
+    if h:
+        mias = mias - {h} if quitar else mias | {h}
+    TRABAJOS.mkdir(parents=True, exist_ok=True)
+    (TRABAJOS / "ventanas.json").write_text(json.dumps(sorted(mias)))
+
+
+def _limpiar():
+    """Cierra las ventanas que JARVIS dejó abiertas (p. ej. si lo interrumpieron); nunca las tuyas."""
+    _cerrar_dialogo(todos=True)
+    for h in _mias() & {x for x, _ in _ventanas()}:
+        ESTADO["hwnd"] = h
+        _cerrar_mia()
+    _anotar(None)
+    ESTADO.update(hwnd=None, abierto=None)
 
 
 def _abrir_en_studio(ruta: Path) -> str:
     if not EXE.exists():
         raise RuntimeError("No encuentro Bambu Studio instalado (bambu-studio.exe).")
-    _cerrar_mia()
+    _limpiar()
     antes = {h for h, _ in _ventanas()}
     subprocess.Popen([str(EXE), str(ruta)])
     for _ in range(90):
@@ -199,13 +285,14 @@ def _abrir_en_studio(ruta: Path) -> str:
         nuevas = [(h, t) for h, t in _ventanas() if h not in antes and t.endswith("BambuStudio") and DIALOGO not in t]
         if nuevas:
             ESTADO.update(hwnd=nuevas[0][0], abierto=str(ruta))
+            _anotar(nuevas[0][0])
             time.sleep(4)  # termina de cargar el archivo
             for h, t in _ventanas():
                 if t == "Peligro":  # p. ej. «El archivo no contiene ninguna información geométrica»
                     aviso = " ".join(x.Name for x, _ in _recorrer(_control(h), 6) if x.ControlTypeName == "TextControl" and x.Name)
                     si = next((x for x, _ in _recorrer(_control(h), 6) if x.Name in ("Sí", "Si", "Aceptar", "OK")), None)
                     if si:
-                        _clic(*_centro(si.BoundingRectangle))
+                        _tocar(si)
                     ESTADO["abierto"] = None
                     raise RuntimeError(f"Bambu Studio no pudo abrir {ruta.name}: {aviso or 'error al cargar'}")
             # Bambu puede preguntar algo al abrir (versión del 3MF, perfiles): acepta lo propuesto
@@ -214,17 +301,21 @@ def _abrir_en_studio(ruta: Path) -> str:
                 if x.ControlTypeName == "WindowControl" and x.Name and x.Name != ven.Name:
                     si = next((b for b, _ in _recorrer(x, 6) if (b.Name or "").lower() in ("sí", "si", "aceptar", "ok", "yes", "cargar")), None)
                     if si:
-                        _clic(*_centro(si.BoundingRectangle))
+                        _tocar(si)
             return nuevas[0][1]
     raise RuntimeError("Bambu Studio no abrió la ventana del archivo.")
 
 
-def _cerrar_dialogo():
-    if d := _dialogo():
-        cerrar = next((x for x, _ in _recorrer(d, 3) if x.Name == "Cerrar"), None)
-        if cerrar:
-            _clic(*_centro(cerrar.BoundingRectangle))
-            time.sleep(1)
+def _cerrar_dialogo(todos=False):
+    """todos=False: el diálogo actual. todos=True: todos los que cuelgan de ventanas de JARVIS."""
+    mias = _mias() | {ESTADO["hwnd"]}
+    for h, t in _ventanas():
+        if t != DIALOGO or (todos and ctypes.windll.user32.GetWindow(h, 4) not in mias):  # 4 = GW_OWNER
+            continue
+        ctypes.windll.user32.PostMessageW(h, 0x0010, 0, 0)  # WM_CLOSE: igual que la X, no envía nada
+        time.sleep(1)
+        if not todos:
+            break
 
 
 def _dialogo():
@@ -250,13 +341,13 @@ def _abrir_dialogo(ruta: Path):
     if not _verde(imprimir):  # la ventana vuelve a laminar con los ajustes guardados en el archivo
         laminar = _boton(ven, "Laminar placa")
         if laminar:
-            _clic(*_centro(laminar.BoundingRectangle))
+            _tocar(laminar)
         limite = time.time() + 900
         while time.time() < limite and not _verde(imprimir):
             time.sleep(2)
         if not _verde(imprimir):
             raise RuntimeError("Bambu Studio no terminó de laminar (revisa si muestra un error en la placa).")
-    _clic(*_centro(imprimir.BoundingRectangle))
+    _tocar(imprimir)
     for _ in range(20):
         time.sleep(1)
         if d := _dialogo():
@@ -283,7 +374,7 @@ def _leer_dialogo(d) -> dict:
 
 def _cerrar_emergentes(d):
     r = d.BoundingRectangle
-    _clic(r.left + r.width() * 0.45, r.top + 60 * _escala(d.NativeWindowHandle) / 1.25)  # zona vacía del diálogo
+    _clic(r.left + r.width() * 0.45, r.top + 60 * _escala(d.NativeWindowHandle) / 1.25, d)  # zona vacía del diálogo
     time.sleep(0.6)
 
 
@@ -295,7 +386,7 @@ def _abrir_ams(d):
     e = _escala(d.NativeWindowHandle) / 1.25  # medidas tomadas a 125 %
     antes = {h for h, _ in _ventanas()}
     r = fil.BoundingRectangle
-    _clic(r.left + 58 * e, r.bottom + 60 * e)
+    _clic(r.left + 58 * e, r.bottom + 60 * e, d)
     time.sleep(1.5)
     for h, _ in _ventanas():
         if h in antes:
@@ -319,7 +410,7 @@ def _leer_ams(d) -> list[dict]:
     ams_n = 0
     for i, (x, es_externo) in enumerate(sorted(casillas, key=lambda c: (c[0].BoundingRectangle.top, c[0].BoundingRectangle.left))):
         b = x.BoundingRectangle
-        img = _captura(b)
+        img = _captura(b, x)
         rgb = _color_medio(img, 0.14, 0.55)
         if es_externo:
             nombre = "Externo"
@@ -339,14 +430,22 @@ def _lista_impresoras(d):
     caja = next((x for x, _ in _recorrer(d, 8) if x.ControlTypeName == "PaneControl" and x.Name == info["nombre"]), None)
     if not caja:
         raise RuntimeError("No encuentro el selector de impresora en la ventana de envío.")
-    antes = {h for h, _ in _ventanas()}
-    _clic(*_centro(caja.BoundingRectangle))
-    time.sleep(1.5)
-    nuevo = next((h for h, _ in _ventanas() if h not in antes), None)
+    b = caja.BoundingRectangle
+    nuevo = None
+    for _ in range(3):  # la lista aparece justo debajo del selector
+        _tocar(caja)
+        time.sleep(1.5)
+        for h, t in _ventanas():
+            c = _control(h) if t in ("panel", "") else None
+            if c and abs(c.BoundingRectangle.top - b.bottom) < 40 and c.BoundingRectangle.height() > 30:
+                nuevo = h
+                break
+        if nuevo:
+            break
     if not nuevo:
         raise RuntimeError("No se abrió la lista de impresoras.")
     r = _control(nuevo).BoundingRectangle
-    img = _captura(r)
+    img = _captura(r, nuevo)
     # la fila elegida está resaltada: su alto es el de todas las filas
     col = [img.getpixel((int(img.width * 0.5), y))[:3] for y in range(img.height)]
     claro = [sum(p) > 735 for p in col]  # blanco
@@ -354,15 +453,27 @@ def _lista_impresoras(d):
     fin = next((y for y in range(ini, len(claro)) if claro[y]), ini)
     alto = fin - ini if fin - ini > 15 else int(40 * _escala(nuevo))
     filas = max(1, round((r.height() - ini) / alto))
-    return r, alto, filas, ini
+    return r, alto, filas, ini, nuevo
+
+
+def _seleccionar(d, nombre: str, pista: int = 0) -> bool:
+    """Elige la impresora por su nombre: el orden de la lista cambia entre una vez y otra."""
+    if _leer_dialogo(d)["nombre"] == nombre:
+        return True
+    _, _, filas, _, _ = _lista_impresoras(d)
+    _cerrar_emergentes(d)
+    for k in [pista] + [x for x in range(filas) if x != pista]:
+        if _elegir_fila(d, k) and _leer_dialogo(d)["nombre"] == nombre:
+            return True
+    return False
 
 
 def _elegir_fila(d, i):
-    r, alto, filas, ini = _lista_impresoras(d)
+    r, alto, filas, ini, pop = _lista_impresoras(d)
     if i >= filas:
         _cerrar_emergentes(d)
         return False
-    _clic(r.left + r.width() * 0.4, r.top + ini + alto * i + alto / 2)
+    _clic(r.left + r.width() * 0.4, r.top + ini + alto * i + alto / 2, pop)
     time.sleep(2.5)  # actualiza estado y AMS de la impresora elegida
     return True
 
@@ -385,7 +496,7 @@ def _sonda() -> Path:
 
 def _explorar() -> list[dict]:
     d = _abrir_dialogo(Path(ESTADO["abierto"]) if ESTADO["abierto"] and _dialogo() else _sonda())
-    _, _, filas, _ = _lista_impresoras(d)
+    _, _, filas, _, _ = _lista_impresoras(d)
     _cerrar_emergentes(d)
     vistas = []
     for i in range(min(filas, 20)):
@@ -397,9 +508,14 @@ def _explorar() -> list[dict]:
         # el aviso de «no compatible» solo dice que la sonda es para A1: la impresora sigue disponible
         incompatible = any("no es compatible" in a for a in info["avisos"])
         ocupada = any(re.search(r"ocupad|desconect|offline|sin conexi|mantenimiento|error", a, re.I) for a in info["avisos"])
-        vistas.append({"fila": i, "nombre": info["nombre"], "modelo": _modelo_de(info["nombre"]),
+        if incompatible and not re.search(r"\s[–-]\s", info["nombre"]):
+            m = re.search(r"\(([^)]+)\) no es compatible", " ".join(info["avisos"]))
+            modelo = m.group(1) if m else None  # Bambu dice «La impresora seleccionada (X1 Carbon) no es compatible…»
+        else:
+            modelo = _modelo_de(info["nombre"])
+        vistas.append({"fila": i, "nombre": info["nombre"], "modelo": modelo,
                        "avisos": [a for a in info["avisos"] if "no es compatible" not in a],
-                       "libre": info["lista"] or (incompatible and not ocupada), "ams": _leer_ams(d)})
+                       "libre": bool(modelo) and (info["lista"] or (incompatible and not ocupada)), "ams": _leer_ams(d)})
     ESTADO.update(impresoras=vistas, cuando=time.time())
     return vistas
 
@@ -428,32 +544,31 @@ def _casilla_para(imp: dict, pedido):
     """La casilla del AMS que mejor coincide con el color pedido (o la primera si no se pidió color)."""
     if not imp["ams"]:
         return None
+    externa = lambda s: s["casilla"] == "Externo"  # noqa: E731 — puede estar configurada sin filamento puesto
     if not pedido:
-        return imp["ams"][0]
-    s = min(imp["ams"], key=lambda s: (s["color"] != pedido[0], _distancia(s["rgb"], pedido[1])))
+        return sorted(imp["ams"], key=externa)[0]
+    s = min(imp["ams"], key=lambda s: (s["color"] != pedido[0], externa(s), _distancia(s["rgb"], pedido[1])))
     return s if s["color"] == pedido[0] or _distancia(s["rgb"], pedido[1]) < 160 else None
 
 
 def _enviar_plato(archivo: Path, imp: dict, casilla: dict) -> str:
     d = _abrir_dialogo(archivo)
-    if _leer_dialogo(d)["nombre"] != imp["nombre"]:
-        _elegir_fila(d, imp["fila"])
-    if _leer_dialogo(d)["nombre"] != imp["nombre"]:
-        raise RuntimeError(f"no pude seleccionar {imp['nombre']} en Bambu Studio")
+    if not _seleccionar(d, imp["nombre"], imp["fila"]):
+        raise RuntimeError(f"no encuentro {imp['nombre']} en la lista de Bambu Studio")
     pop, casillas = _abrir_ams(d)
     casillas = sorted(casillas, key=lambda c: (c[0].BoundingRectangle.top, c[0].BoundingRectangle.left))
     nombres = [x["casilla"] for x in _leer_ams_nombres(casillas)]
     if casilla["casilla"] not in nombres:
         _cerrar_emergentes(d)
         raise RuntimeError("el AMS cambió mientras elegía")
-    _clic(*_centro(casillas[nombres.index(casilla["casilla"])][0].BoundingRectangle))
+    _tocar(casillas[nombres.index(casilla["casilla"])][0])
     time.sleep(1)
     if pop and pop.NativeWindowHandle in {h for h, _ in _ventanas()}:
         _cerrar_emergentes(d)
     info = _leer_dialogo(d)
     if not info["lista"]:
         raise RuntimeError("Bambu Studio no deja enviar: " + ("; ".join(info["avisos"]) or "el botón Enviar está desactivado"))
-    _clic(*_centro(info["_enviar"].BoundingRectangle))
+    _tocar(info["_enviar"])
     for _ in range(120):
         time.sleep(1)
         if not _dialogo():
@@ -545,14 +660,18 @@ def _planear(a: dict) -> dict:
             "color": pedido[0] if pedido else None, "platos": [], "creado": time.time(), "clave": clave}
     for i, cuenta in enumerate(platos):
         plato = {"n": i + 1, "piezas": cuenta, "impresora": None, "casilla": None, "archivo": None, "segundos": 0, "gramos": 0.0}
-        if i < len(candidatas):
-            imp, casilla = candidatas[i]
-            plato.update(impresora=imp, casilla=casilla)
-            plato.update(_laminar_plato(carpeta, stls, cuenta, imp["modelo"], cambios, material, orientar, i + 1))
+        # una impresora con cama más chica (p. ej. A1 mini) puede no tener espacio: se prueba la siguiente
+        while candidatas:
+            imp, casilla = candidatas.pop(0)
+            datos = _laminar_plato(carpeta, stls, cuenta, imp["modelo"], cambios, material, orientar, i + 1)
+            if datos["subplatos"] == 1:
+                plato.update(impresora=imp, casilla=casilla, **datos)
+                break
         plan["platos"].append(plato)
-    if not candidatas:  # sin impresoras libres igual se calcula el tiempo de cada plato con la A1
-        for plato in plan["platos"]:
-            plato.update(_laminar_plato(carpeta, stls, plato["piezas"], "A1", cambios, material, orientar, plato["n"]))
+    for plato in plan["platos"]:  # los que quedan en espera igual muestran su tiempo (calculado para la A1)
+        if not plato["archivo"]:
+            datos = _laminar_plato(carpeta, stls, plato["piezas"], modelo_cama, cambios, material, orientar, plato["n"])
+            plato.update(segundos=datos["segundos"], gramos=datos["gramos"])
     plan["texto"] = _texto_plan(plan, stls, imps, pedido)
     ESTADO["plan"] = plan
     return plan
@@ -568,7 +687,8 @@ def _laminar_plato(carpeta, stls, cuenta, modelo_imp, cambios, material, orienta
         (sub / f"plato_{n}.json").write_text(json.dumps(info), encoding="utf-8")
     info = json.loads((sub / f"plato_{n}.json").read_text(encoding="utf-8"))
     extra = f" (Bambu lo partió en {len(info)} platos)" if len(info) > 1 else ""
-    return {"archivo": str(archivo), "segundos": sum(x["segundos"] for x in info), "gramos": sum(x["gramos"] for x in info), "nota": extra}
+    return {"archivo": str(archivo), "segundos": sum(x["segundos"] for x in info), "gramos": sum(x["gramos"] for x in info),
+            "nota": extra, "subplatos": len(info)}
 
 
 def _texto_plan(plan, stls, imps, pedido) -> str:
@@ -611,6 +731,8 @@ def _imprimir(a: dict) -> str:
         try:
             enviados.append(f"Plato {plato['n']} → " + _enviar_plato(Path(plato["archivo"]), plato["impresora"], plato["casilla"]))
             plato["enviado"] = True
+            _guardar_trabajos(_trabajos() + [{"impresora": plato["impresora"]["nombre"].split(" (")[0], "plato": plato["n"],
+                                              "modelo": Path(plan["modelo"]).name, "desde": time.time()}])
         except Exception as e:  # noqa: BLE001
             errores.append(f"Plato {plato['n']}: {e}")
     espera = [p["n"] for p in plan["platos"] if not p.get("enviado")]
@@ -646,6 +768,243 @@ async def _en_hilo(fn, *args):
         with auto.UIAutomationInitializerInThread():
             return fn(*args)
     return await asyncio.get_running_loop().run_in_executor(_hilo, correr)
+
+
+# ───────────────────────── vigilancia de impresiones ─────────────────────────
+# La pestaña «Multidispositivo» de Bambu Studio (Preferencias → Administración de varios dispositivos) muestra
+# hasta 6 impresoras con su trabajo y estado; se lee con el OCR de Windows. El detalle (porcentaje, capa,
+# error con código) sale de la pestaña Dispositivo al pulsar «Vista».
+REGISTRO_TRABAJOS = TRABAJOS / "trabajos.json"
+CADA = 180  # segundos entre revisiones
+ATASCADA = 15 * 60  # sin avanzar este tiempo = algo pasa (filamento, atasco…)
+MALOS = re.compile(r"fallo|error|pausa|detenid|cancelad|introduzca|inserte|atasc|obstru", re.I)
+
+
+def _clave(nombre: str) -> str:
+    """'Taller — A1' / 'Taller – A1 (Fuera de lí…' -> 'taller' (el OCR confunde guiones y letras)."""
+    return re.sub(r"[^a-z0-9]", "", _sin_tildes(re.split(r"\s*[–—-]\s*|\(", nombre)[0]))
+
+
+def _trabajos() -> list[dict]:
+    try:
+        return json.loads(REGISTRO_TRABAJOS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+def _guardar_trabajos(lista: list[dict]):
+    TRABAJOS.mkdir(parents=True, exist_ok=True)
+    REGISTRO_TRABAJOS.write_text(json.dumps(lista, ensure_ascii=False), encoding="utf-8")
+
+
+def _ventana_vigia():
+    """Una ventana de Bambu Studio de JARVIS (si no hay, abre la sonda)."""
+    h = next((h for h in _mias() if h in {x for x, _ in _ventanas()}), None)
+    if not h:
+        _abrir_en_studio(_sonda())
+        h = ESTADO["hwnd"]
+    ESTADO["hwnd"] = h
+    if _u32.IsIconic(h):  # minimizada no se puede leer: se restaura sin quitarte el foco
+        _u32.ShowWindow(h, 4)  # SW_SHOWNOACTIVATE
+        time.sleep(1.5)
+    return _control(h)
+
+
+def _pestana(ven, nombre: str):
+    b = next((x for x, _ in _recorrer(ven, 5) if (x.Name or "").strip() == nombre), None)
+    if not b:
+        raise RuntimeError(f"Bambu Studio no muestra la pestaña «{nombre}» (actívala en Preferencias → "
+                           "Administración de varios dispositivos y reinicia Bambu Studio)." if nombre == "Multidispositivo" else
+                           f"No encuentro la pestaña «{nombre}».")
+    _tocar(b)
+    time.sleep(2.5)
+
+
+def _tabla() -> list[dict]:
+    """Filas de la pestaña Multidispositivo: [{nombre, tarea, estado, y}]"""
+    from . import ocr
+
+    ven = _ventana_vigia()
+    _pestana(ven, "Multidispositivo")
+    r = ven.BoundingRectangle
+    lineas = ocr.leer(_captura(r, ven))
+    cab = {l["texto"].split(",")[-1].strip(): l["caja"] for l in lineas if "Nombre del dispositivo" in l["texto"] or
+           "Nombre de la tarea" in l["texto"] or "Estado del dispositivo" in l["texto"] or l["texto"] == "Acciones"}
+    col = {k: v[0] for k, v in cab.items()}
+    if "Nombre del dispositivo" not in col:
+        return []
+    x_tarea, x_estado = col.get("Nombre de la tarea", 10 ** 6), col.get("Estado del dispositivo", 10 ** 6)
+    x_acc = col.get("Acciones", 10 ** 6)
+    y_cab = cab["Nombre del dispositivo"][3]
+    filas: dict[int, dict] = {}
+    for l in lineas:
+        x0, y0, x1, y1 = l["caja"]
+        if y0 <= y_cab or x0 < col["Nombre del dispositivo"] - 5:
+            continue
+        fila = filas.setdefault(round((y0 + y1) / 2 / 20), {"y": r.top + (y0 + y1) / 2, "nombre": "", "tarea": "", "estado": ""})
+        campo = "nombre" if x0 < x_tarea - 5 else "tarea" if x0 < x_estado - 5 else "estado" if x0 < x_acc - 5 else None
+        if campo:
+            fila[campo] = (fila[campo] + " " + l["texto"]).strip()
+    out = [f for f in filas.values() if f["nombre"]]
+    for f in out:
+        f["clave"], f["vista_x"] = _clave(f["nombre"]), r.left + x_acc + 50
+        f["fuera"] = "fuera de l" in f["nombre"].lower()
+    return sorted(out, key=lambda f: f["y"])
+
+
+def _detalle(fila: dict) -> dict:
+    """Pulsa «Vista» y lee la pestaña Dispositivo: archivo, %, capa, restante, estado y error."""
+    ven = _ventana_vigia()
+    _clic(fila["vista_x"], fila["y"], ven)
+    time.sleep(3)
+    textos = [(x.Name or "").strip() for x, _ in _recorrer(ven, 16) if x.ControlTypeName == "TextControl" and (x.Name or "").strip()]
+    d = {"porcentaje": None, "capa": None, "restante": None, "estado": "", "error": None}
+    if "Progreso de la impresión" in textos:
+        resto = textos[textos.index("Progreso de la impresión") + 1:]
+        d["archivo"] = resto[0] if resto else ""
+        for k, t in enumerate(resto):
+            if t == "%" and k and resto[k - 1].isdigit():
+                d["porcentaje"] = int(resto[k - 1])
+            elif t.startswith("Capa:"):
+                d["capa"] = t[5:].strip()
+            elif re.fullmatch(r"-?\d+h?\d*min\d*s?|-?\d+s", t):
+                d["restante"] = t.lstrip("-")
+            elif t.startswith("Tiempo estimado") and k:
+                d["estado"] = resto[k - 1] if not resto[k - 1].startswith(("Capa", "-")) else ""
+    for k, t in enumerate(textos):
+        m = re.search(r"\[([0-9A-F]{4}-[0-9A-F]{4})", t)
+        if m:
+            d["error"] = (" ".join(textos[k - 1].split()) if k else "") + f" [{m.group(1)}]"
+            break
+    return d
+
+
+def _resumen_estado(filas: list[dict], detalles: dict) -> str:
+    lineas = []
+    for f in filas:
+        d = detalles.get(f["clave"]) or {}
+        partes = [f["estado"] or "?"]
+        if f["tarea"] and "ninguna" not in f["tarea"].lower():
+            partes.insert(0, f["tarea"])
+        if d.get("porcentaje") is not None:
+            partes.append(f"{d['porcentaje']} %")
+        if d.get("capa"):
+            partes.append(f"capa {d['capa']}")
+        if d.get("restante"):
+            partes.append(f"faltan {d['restante']}")
+        if d.get("error"):
+            partes.append("⚠ " + d["error"])
+        lineas.append(f"- {f['nombre'].split('(')[0].strip()}: " + " · ".join(partes) + (" (fuera de línea)" if f["fuera"] else ""))
+    return "\n".join(lineas)
+
+
+def _boton_control(ven, cual: str):
+    """Los botones ⏸/▶ y ■ están dibujados a la derecha de la barra de progreso: se ubican por color."""
+    capa = next((x for x, _ in _recorrer(ven, 16) if x.ControlTypeName == "TextControl" and (x.Name or "").startswith("Capa:")), None)
+    if not capa:
+        raise RuntimeError("no veo un trabajo en curso en esa impresora")
+    vr, cr = ven.BoundingRectangle, capa.BoundingRectangle
+    img = _captura(vr, ven)
+    x0, x1 = cr.right - vr.left + 120, min(img.width - 1, cr.right - vr.left + 320)
+    y0, y1 = cr.top - vr.top, min(img.height - 1, cr.bottom - vr.top + 60)
+    manchas, ini = [], None
+    for x in range(x0, x1):
+        ys = [y for y in range(y0, y1) if sum(img.getpixel((x, y))) < 500]
+        if ys and ini is None:
+            ini, yy = x, ys
+        elif ys:
+            yy += ys
+        elif ini is not None:
+            manchas.append(((ini + x) / 2 + vr.left, sum(yy) / len(yy) + vr.top))
+            ini = None
+    if len(manchas) < 2:
+        raise RuntimeError("no encuentro los botones de pausa y detener")
+    return manchas[-1] if cual == "detener" else manchas[-2]
+
+
+def _controlar(impresora: str, accion: str) -> str:
+    filas = _tabla()
+    clave = _clave(impresora)
+    fila = next((f for f in filas if clave and clave in f["clave"]), None)
+    if not fila:
+        return f"«{impresora}» no está en la vista de varios dispositivos. Veo: " + ", ".join(f["nombre"] for f in filas)
+    _detalle(fila)
+    ven = _ventana_vigia()
+    ven.SetActive()  # los diálogos de confirmación de Bambu solo responden con la ventana al frente
+    time.sleep(0.4)
+    antes = {h for h, _ in _ventanas()}
+    _clic(*_boton_control(ven, "detener" if accion == "cancelar" else "pausa"), ven)
+    time.sleep(2)
+    for h, t in _ventanas():
+        if h in antes:
+            continue
+        c = _control(h)
+        si = next((x for x, _ in _recorrer(c, 8) if (x.Name or "") in ("Sí", "Si", "Aceptar", "OK")), None)
+        if si:
+            _tocar(si)
+            time.sleep(2)
+    time.sleep(3)
+    d = _detalle(fila)
+    return f"{fila['nombre'].split('(')[0].strip()}: {d.get('estado') or 'listo'}" + (f" · {d['error']}" if d.get("error") else "")
+
+
+def _revisar() -> tuple[list[str], str]:
+    """Una revisión: devuelve (avisos nuevos, resumen). Avisa de errores y de impresiones terminadas."""
+    filas = _tabla()
+    trabajos = _trabajos()
+    avisos, detalles = [], {}
+    for t in trabajos:
+        f = next((x for x in filas if x["clave"] == _clave(t["impresora"])), None)
+        if not f:
+            continue
+        d = _detalle(f) if not f["fuera"] else {}
+        detalles[f["clave"]] = d
+        problema = d.get("error") or (f["estado"] if MALOS.search(f["estado"]) else None)
+        if "finalizad" in f["estado"].lower() and time.time() - t["desde"] > 120:
+            avisos.append(f"✅ {t['impresora']} terminó el plato {t['plato']} ({t['modelo']}).")
+            t["fin"] = True
+        elif problema and problema != t.get("aviso"):
+            avisos.append(f"⚠ {t['impresora']} se detuvo con el plato {t['plato']} ({t['modelo']}): {problema}")
+            t["aviso"] = problema
+        if d.get("porcentaje") is not None and d["porcentaje"] != t.get("porcentaje"):
+            if t.get("porcentaje") is not None:  # la primera lectura no cuenta como avance
+                t["avanzo"] = time.time()
+            t["porcentaje"] = d["porcentaje"]
+        # sin mensaje de error pero sin avanzar (p. ej. esperando filamento): también se avisa, una vez
+        quieto = time.time() - t.get("avanzo", t["desde"])
+        if not t.get("fin") and not f["fuera"] and quieto > ATASCADA and not t.get("aviso_quieto"):
+            avisos.append(f"⚠ {t['impresora']} lleva {int(quieto // 60)} min sin avanzar con el plato {t['plato']} "
+                          f"({f['estado'] or 'sin estado'}, {t.get('porcentaje', 0)} %). Revisa la impresora.")
+            t["aviso_quieto"] = True
+    _guardar_trabajos([t for t in trabajos if not t.get("fin")])
+    return avisos, _resumen_estado(filas, detalles)
+
+
+def _cola() -> list[str]:
+    """Manda los platos en espera del último plan a las impresoras que se liberaron."""
+    plan = ESTADO.get("plan")
+    if not plan or not any(not p["impresora"] and not p.get("enviado") for p in plan["platos"]):
+        return []
+    res = _imprimir({"pendientes": "si"})
+    return [f"🖨 Cola de impresión: {res}"] if res.startswith("Enviado") else []
+
+
+async def vigilante(avisar):
+    """Tarea de fondo del PC: cada pocos minutos revisa las impresoras con trabajos de JARVIS."""
+    if os.name != "nt":
+        return
+    while True:
+        await asyncio.sleep(CADA)
+        if not _trabajos() and not (ESTADO.get("plan") and any(not p.get("enviado") for p in ESTADO["plan"]["platos"])):
+            continue
+        try:
+            avisos, _ = await _en_hilo(_revisar)
+            avisos += await _en_hilo(_cola)
+        except Exception as e:  # noqa: BLE001 — una revisión fallida no detiene la vigilancia
+            log.warning("vigilancia de impresoras: %s", e)
+            continue
+        for texto in avisos:
+            await avisar(texto)
 
 
 # ───────────────────────── herramientas ─────────────────────────
@@ -744,3 +1103,27 @@ async def imprimir_3d(ctx, **a):
         return await _en_hilo(_imprimir, a)
     except Exception as e:  # noqa: BLE001
         return f"No pude enviar la impresión: {e}"
+
+
+@herramienta("estado_impresoras_3d", "Estado en vivo de las impresoras Bambu Lab: qué imprime cada una, porcentaje, capa, "
+             "tiempo restante y errores (p. ej. «se acabó el filamento»). Para «¿cómo va la impresión?».", solo_pc=True, timeout=600)
+async def estado_impresoras_3d(ctx):
+    def leer():
+        filas = _tabla()
+        detalles = {f["clave"]: _detalle(f) for f in filas if f["tarea"] and "ninguna" not in f["tarea"].lower() and not f["fuera"]}
+        return _resumen_estado(filas, detalles)
+    try:
+        return await _en_hilo(leer) or "La vista de varios dispositivos de Bambu Studio está vacía."
+    except Exception as e:  # noqa: BLE001
+        return f"No pude leer el estado de las impresoras: {e}"
+
+
+@herramienta("controlar_impresion_3d", "Pausa, reanuda o cancela la impresión en curso de una impresora Bambu Lab.",
+             {"impresora": P("string", "Nombre de la impresora, ej. 'Taller'"),
+              "accion": P("string", "pausar, reanudar o cancelar", ["pausar", "reanudar", "cancelar"])},
+             ["impresora", "accion"], peligrosa=True, solo_pc=True, timeout=300)
+async def controlar_impresion_3d(ctx, impresora, accion):
+    try:
+        return await _en_hilo(_controlar, impresora, accion)
+    except Exception as e:  # noqa: BLE001
+        return f"No pude {accion} la impresión: {e}"
