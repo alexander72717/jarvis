@@ -943,9 +943,14 @@ def _controlar(impresora: str, accion: str) -> str:
         if si:
             _tocar(si)
             time.sleep(2)
-    time.sleep(3)
-    d = _detalle(fila)
-    return f"{fila['nombre'].split('(')[0].strip()}: {d.get('estado') or 'listo'}" + (f" · {d['error']}" if d.get("error") else "")
+    time.sleep(5)
+    nueva = next((f for f in _tabla() if f["clave"] == fila["clave"]), fila)
+    if accion == "cancelar":
+        _guardar_trabajos([t for t in _trabajos() if _clave(t["impresora"]) != fila["clave"]])
+    estado = nueva["estado"] or "sin estado"
+    if accion == "cancelar" and "fallo" in estado.lower():
+        estado = "cancelada (Bambu la marca como «Fallo en la impresión»)"
+    return f"{fila['nombre'].split('(')[0].strip()} → {accion}: ahora está {estado}" +         (f" · tarea {nueva['tarea']}" if nueva["tarea"] and "ninguna" not in nueva["tarea"].lower() else "")
 
 
 def _revisar() -> tuple[list[str], str]:
