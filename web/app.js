@@ -1078,12 +1078,21 @@ const archivosMostrados = new Set();
 function tarjetaArchivo(a) {
   if (archivosMostrados.has(a.id)) return;
   archivosMostrados.add(a.id);
+  if (/\.glb$/i.test(a.nombre || "")) return tarjetaVisor3D(a);
   const d = document.createElement("div");
   d.className = "msg jarvis archivo";
   const img = (a.tipo || "").startsWith("image/") ? `<img src="${a.url}" alt="">` : "";
   d.innerHTML = `${img}<a class="descargar" href="${a.url}" download="${escapar(a.nombre)}">⬇ ${escapar(a.nombre)}</a>
     <div class="meta">${pesoLegible(a.tamano)} · desde ${escapar(a.origen || "?")} · ${escapar(a.cuando || "")}</div>`;
   chat.appendChild(d); alFondo(); actualizarVacio();
+}
+function tarjetaVisor3D(a) {
+  // el visor (three.js) se carga como módulo aparte; si aún no está listo, espera su aviso
+  const d = document.createElement("div");
+  d.className = "msg jarvis visor3d";
+  chat.appendChild(d); alFondo(); actualizarVacio();
+  const montar = () => window.Visor3D.montar(d, a.url, a.nombre);
+  if (window.Visor3D) montar(); else window.addEventListener("visor3d-listo", montar, { once: true });
 }
 async function subirArchivos(lista) {
   for (const f of lista) {

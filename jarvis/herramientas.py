@@ -53,10 +53,11 @@ def P(tipo, desc, enum=None, items=None):
     return d
 
 
-def herramienta(nombre, descripcion, params=None, requeridos=(), peligrosa=False, solo_pc=False):
+def herramienta(nombre, descripcion, params=None, requeridos=(), peligrosa=False, solo_pc=False, timeout=120):
+    """timeout: segundos que el cerebro espera cuando la ejecuta el PC (laminar e imprimir tardan minutos)."""
     def deco(fn):
         HERRAMIENTAS[nombre] = {"fn": fn, "desc": descripcion, "params": params or {}, "req": list(requeridos),
-                                "peligrosa": peligrosa, "solo_pc": solo_pc}
+                                "peligrosa": peligrosa, "solo_pc": solo_pc, "timeout": timeout}
         return fn
     return deco
 
@@ -77,7 +78,7 @@ PARA_NODO = {"estado_sistema", "listar_archivos", "leer_archivo", "escribir_arch
 
 def para_nodo() -> list[dict]:
     """Lo que este equipo anuncia al cerebro cuando se conecta como nodo."""
-    return [{"nombre": k, "desc": v["desc"], "params": v["params"], "req": v["req"], "peligrosa": v["peligrosa"]}
+    return [{"nombre": k, "desc": v["desc"], "params": v["params"], "req": v["req"], "peligrosa": v["peligrosa"], "timeout": v["timeout"]}
             for k, v in disponibles().items() if v["solo_pc"] or k in PARA_NODO]
 
 
@@ -115,7 +116,7 @@ GRUPOS = [
     ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
     ({"notion_ver", "notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "calendario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
     ({"poner_musica", "mis_gustos_musicales", "multimedia"}, ("música", "musica", "canción", "cancion", "spotify", "pon algo", "ponme", "playlist", "lista de", "escuchar", "artista", "banda", "álbum", "album", "concentrarme", "relajarme", "gustos")),
-    ({"modelo_3d_abrir", "impresoras_3d", "imprimir_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina")),
+    ({"modelo_3d_abrir", "impresoras_3d", "impresion_3d_planear", "imprimir_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina", "plato", "pieza", "relleno", "soporte", "pared", "pendiente")),
     ({"buscar_archivos", "enviar_archivo", "archivos_recibidos", "guardar_en_pc"}, ("archivo", "documento", "pdf", "foto", "imagen", "video",
       "tráeme", "traeme", "mándame", "mandame", "pásame", "pasame", "envíame", "enviame", "descarga", "guárdalo", "guardalo", "guarda", "compart")),
     ({"como_abro"}, ("cómo abres", "como abres", "dónde abres", "donde abres", "cómo abro", "como abro", "recuerdas abrir")),
@@ -169,7 +170,8 @@ async def ejecutar(nombre: str, args: dict, ctx: Contexto) -> str:
     if h.get("remota"):
         from .nodos import REGISTRO
 
-        return (await REGISTRO.ejecutar(h["remota"], {k: v for k, v in args.items() if k in h["params"]}))[:9000]
+        return (await REGISTRO.ejecutar(h["remota"], {k: v for k, v in args.items() if k in h["params"]},
+                                        timeout=h["remota"].get("timeout", 120)))[:9000]
     try:
         res = await h["fn"](ctx, **{k: v for k, v in args.items() if k in h["params"]})
     except TypeError as e:

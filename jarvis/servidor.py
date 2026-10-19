@@ -428,6 +428,18 @@ async def _anunciar_archivo(a: dict):
     await difundir({"type": "archivo", **a})
 
 
+# Botones del visor 3D: el clic en «Imprimir» ya es la confirmación del usuario (pregunta antes en la página)
+ACCIONES_UI = {"impresoras_3d", "impresion_3d_planear", "imprimir_3d"}
+
+
+@app.post("/api/herramienta/{nombre}")
+async def api_herramienta(nombre: str, args: dict = Body(default={})):
+    if nombre not in ACCIONES_UI:
+        return JSONResponse({"error": "acción no permitida"}, 404)
+    ctx = herramientas.Contexto(router=router, memoria=memoria, canal="web", difundir=difundir)
+    return {"texto": await herramientas.ejecutar(nombre, {k: str(v) for k, v in (args or {}).items()}, ctx)}
+
+
 @app.post("/api/archivos")
 async def subir_archivo(archivo: UploadFile = File(...), origen: str = Form("web")):
     if ENLACE.conectado:  # el PC enlazado: el archivo va al cerebro

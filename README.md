@@ -136,17 +136,25 @@ Lo que dices en un dispositivo aparece en vivo en el otro. Desde el celular pued
 
 ## Impresión 3D con Bambu Lab
 
-«Jarvis, abre el soporte de la cámara» → busca el STL/3MF/OBJ/STEP en el PC, te manda una **vista previa con
-sus medidas** a todas tus pantallas y lo carga en Bambu Studio. «Imprímelo en naranja» → lamina, revisa **todas
-las impresoras de tu cuenta** (estén en tu casa o no: va por la nube de Bambu), descarta las ocupadas, lee los
-colores de cada AMS y lo envía a una libre que tenga ese color. Siempre te pide confirmación antes de enviar.
-También: «¿qué impresoras están libres?» o «imprímelo en negro en la del taller».
+«Jarvis, abre el soporte de la cámara» → busca el STL/3MF/OBJ/STEP en el PC y abre un **visor 3D** en tus
+pantallas (PC y celular): lo giras y acercas, y ves **todas las piezas** como el árbol de Fusion (componentes del
+3MF o cuerpos sueltos del STL). Marca solo lo que quieres imprimir (tocándolo en el visor o en la lista) y cuántas
+copias de cada pieza o de todo.
 
-- Requisitos: **Bambu Studio** instalado con tu cuenta iniciada. No hace falta el «Modo desarrollador»: conservas
-  la nube y Bambu Handy, porque JARVIS maneja Bambu Studio como lo harías tú (mueve el ratón en esa ventana).
-- Usa el perfil de impresora con el que se laminó (el último elegido en Bambu Studio). Una impresora de otro
-  modelo (p. ej. X1 Carbon con un archivo para A1) aparece como «no compatible» y no se usa.
-- Un solo color por impresión. Las casillas vacías o con un material incompatible se ignoran.
+- **Ajustes**: perfil *Básico* (0,20 mm, 2 paredes, 15 %) para lo normal, o *Resistente*, *Rápido*, *Detalle*;
+  y si hace falta, paredes, relleno y patrón, soportes (árbol, normal, solo desde la cama), altura de capa,
+  borde y material.
+- **Platos**: Bambu Studio orienta cada pieza y las acomoda en la cama; si no caben, salen varios platos.
+- **Impresoras**: revisa todas las de tu cuenta (en casa o no: va por la nube), descarta las ocupadas, lee los
+  colores de cada AMS y reparte **un plato por impresora libre** con el color pedido, laminado para su modelo
+  (A1, X1 Carbon…). Los platos que no alcanzan quedan en espera: «imprime los pendientes».
+- «Planear» muestra platos, tiempos y gramos sin enviar nada; «Imprimir» pregunta antes de enviar.
+  Por voz: «imprime 3 copias del cuerpo 4 en negro con soportes y 4 paredes».
+
+Requisitos: **Bambu Studio** instalado con tu cuenta iniciada. No hace falta el «Modo desarrollador»: conservas
+la nube y Bambu Handy, porque JARVIS lamina con la línea de comandos de Bambu Studio y envía cada plato desde su
+ventana «Enviar trabajo de impresión» (mueve el ratón mientras lo hace). Placa por defecto: PEI texturizada.
+Un solo color por plato; las casillas vacías o con un material incompatible se ignoran.
 
 ## JARVIS para tus amigos
 

@@ -431,3 +431,32 @@ body.limpio .barra-sup, body.limpio .barra-inf { position: relative; z-index: 3;
 .msg.archivo { border: 1px solid var(--panel-borde); border-radius: 10px; padding: 10px 12px !important; max-width: 320px; }
 .msg.archivo img { display: block; max-width: 100%; max-height: 220px; border-radius: 6px; margin-bottom: 8px; }
 .msg.archivo .descargar { color: var(--cian); text-decoration: none; font-weight: 600; word-break: break-all; }
+
+/* visor 3D para imprimir */
+.msg.visor3d { width: min(760px, 94%); max-width: 94%; border: 1px solid var(--panel-borde); border-radius: 10px; padding: 10px 12px !important; }
+.v3d-titulo { font-weight: 600; color: var(--cian); margin-bottom: 6px; word-break: break-all; }
+.v3d-lienzo { position: relative; height: min(52vh, 420px); border-radius: 8px; overflow: hidden; background: #070d16; touch-action: none; }
+.v3d-lienzo canvas { width: 100% !important; height: 100% !important; display: block; }
+.v3d-cargando { position: absolute; inset: 0; display: grid; place-items: center; opacity: .7; }
+.v3d-ayuda { font-size: 12px; opacity: .6; margin: 4px 0 8px; }
+.v3d-arbol { max-height: 240px; overflow: auto; border: 1px solid var(--panel-borde); border-radius: 8px; padding: 6px 8px; font-size: 14px; }
+.v3d-grupo summary { cursor: pointer; padding: 3px 0; }
+.v3d-pieza { display: flex; align-items: center; gap: 8px; padding: 3px 0 3px 20px; border-radius: 4px; }
+.v3d-pieza.sobre { background: rgba(255, 197, 61, .12); }
+.v3d-pieza label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v3d-mm { font-size: 12px; opacity: .55; white-space: nowrap; }
+.v3d-copias { width: 54px; }
+.v3d-todo { display: flex; gap: 6px; margin-top: 6px; }
+.v3d-ajustes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 10px; margin: 10px 0; font-size: 13px; }
+.v3d-ajustes label { display: flex; flex-direction: column; gap: 2px; }
+.v3d-ajustes details { grid-column: 1 / -1; }
+.v3d-ajustes details[open] { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 10px; }
+.v3d-ajustes details summary { grid-column: 1 / -1; cursor: pointer; opacity: .8; }
+.v3d-ajustes .v3d-check { flex-direction: row; align-items: center; grid-column: 1 / -1; }
+.v3d-ajustes input, .v3d-ajustes select, .v3d-copias, .v3d-botones button, .v3d-todo button {
+  background: rgba(0, 229, 255, .06); color: inherit; border: 1px solid var(--panel-borde); border-radius: 6px; padding: 5px 7px; font: inherit; }
+.v3d-botones { display: flex; flex-wrap: wrap; gap: 8px; }
+.v3d-botones button { cursor: pointer; padding: 7px 12px; }
+.v3d-botones .v3d-imprimir { border-color: var(--cian); color: var(--cian); font-weight: 600; }
+.v3d-botones button:disabled { opacity: .5; cursor: wait; }
+.v3d-salida { white-space: pre-wrap; font-size: 13px; margin: 8px 0 0; padding: 8px; border-radius: 6px; background: rgba(0, 0, 0, .25); max-height: 260px; overflow: auto; }
