@@ -134,6 +134,20 @@ potente, y si la local intenta «fingir» una acción sin usar la herramienta, s
 Lo que dices en un dispositivo aparece en vivo en el otro. Desde el celular puedes pedir cosas al PC
 («baja el volumen de mi PC», «abre Spotify») si está encendido; si el servidor cae, el PC sigue solo.
 
+## Impresión 3D con Bambu Lab
+
+«Jarvis, abre el soporte de la cámara» → busca el STL/3MF/OBJ/STEP en el PC, te manda una **vista previa con
+sus medidas** a todas tus pantallas y lo carga en Bambu Studio. «Imprímelo en naranja» → lamina, revisa **todas
+las impresoras de tu cuenta** (estén en tu casa o no: va por la nube de Bambu), descarta las ocupadas, lee los
+colores de cada AMS y lo envía a una libre que tenga ese color. Siempre te pide confirmación antes de enviar.
+También: «¿qué impresoras están libres?» o «imprímelo en negro en la del taller».
+
+- Requisitos: **Bambu Studio** instalado con tu cuenta iniciada. No hace falta el «Modo desarrollador»: conservas
+  la nube y Bambu Handy, porque JARVIS maneja Bambu Studio como lo harías tú (mueve el ratón en esa ventana).
+- Usa el perfil de impresora con el que se laminó (el último elegido en Bambu Studio). Una impresora de otro
+  modelo (p. ej. X1 Carbon con un archivo para A1) aparece como «no compatible» y no se usa.
+- Un solo color por impresión. Las casillas vacías o con un material incompatible se ignoran.
+
 ## JARVIS para tus amigos
 
 Versión autónoma: no usa tus llaves ni se conecta a tu PC. Cada amigo puede poner sus llaves gratis
@@ -166,5 +180,5 @@ web/               interfaz HUD (reactor, matriz neuronal, voz)
 tests/             pruebas del router con proveedores simulados
 ```
 
-Pruebas: `.venv\Scripts\python -m tests.test_rotacion`
+Pruebas: `.venv\Scripts\python -m tests.test_rotacion` y `.venv\Scripts\python -m tests.test_impresion3d`
 Logs: `data\jarvis.log` · Detener: `scripts\detener.bat` · Arrancar con Windows: `scripts\instalar.ps1 -ConWindows`
