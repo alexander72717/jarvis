@@ -209,5 +209,5 @@ web/               interfaz HUD (reactor, matriz neuronal, voz)
 tests/             pruebas del router con proveedores simulados
 ```
 
-Pruebas: `.venv\Scripts\python -m tests.test_rotacion` `.venv\Scripts\python -m tests.test_impresion3d` y `-m tests.test_modos`
+Pruebas: `.venv\Scripts\python -m tests.test_rotacion`, `-m tests.test_impresion3d` y `-m tests.test_modos`
 Logs: `data\jarvis.log` · Detener: `scripts\detener.bat` · Arrancar con Windows: `scripts\instalar.ps1 -ConWindows`
