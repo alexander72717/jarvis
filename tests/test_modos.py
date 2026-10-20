@@ -48,6 +48,20 @@ def main():
     desde, hasta = correr(m._ventana_noche({"auto": {"desde": "19:00", "hasta": "06:00"}}))
     assert desde < hasta and (hasta - desde).total_seconds() == 11 * 3600
     print("✓ tareas por palabras clave y ventana de la noche")
+
+    # arreglos que encontró Claude Code al revisar este módulo
+    pasos.clear()
+    correr(m.entrar(ctx, "noche"))
+    correr(m.entrar(ctx, "noche"))  # repetir el mismo modo
+    correr(m.salir(ctx))
+    assert pasos[-1] == ("volumen_pc", {"nivel": "60"}), pasos
+    assert m._elegir("", m._modos()) is None and m._tarea(m.BASE["trabajo"], "cada día") is None
+    assert "JSON" in correr(m.crear_modo(ctx, "x", "{no es json"))
+    correr(m.crear_modo(ctx, "estudio", '{"abrir": "Notion"}'))
+    assert m._modos()["estudio"]["abrir"] == ["Notion"]
+    m.ARCHIVO.write_text("{roto", encoding="utf-8")
+    assert "juego" in m._modos()
+    print("✓ repetir un modo conserva el volumen; sin falsos «cad»/«cada»; crear_modo valida; modos.json dañado no rompe")
     print("\nTodas las pruebas pasaron.")
 
 

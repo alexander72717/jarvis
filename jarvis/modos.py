@@ -55,8 +55,18 @@ BASE = {
 
 def _modos() -> dict:
     if not ARCHIVO.exists():
-        ARCHIVO.write_text(json.dumps(BASE, ensure_ascii=False, indent=2), encoding="utf-8")
-    return json.loads(ARCHIVO.read_text(encoding="utf-8"))
+        _escribir(BASE)
+    try:
+        return json.loads(ARCHIVO.read_text(encoding="utf-8"))
+    except ValueError:  # un modos.json dañado no debe romper cada respuesta del agente
+        log.warning("modos.json dañado: uso los modos de fábrica")
+        return dict(BASE)
+
+
+def _escribir(modos: dict):
+    tmp = ARCHIVO.with_suffix(".tmp")  # escritura atómica: nunca queda un archivo a medias
+    tmp.write_text(json.dumps(modos, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(ARCHIVO)
 
 
 def activo() -> dict | None:
@@ -84,12 +94,14 @@ def instruccion() -> str:
 
 
 def _elegir(nombre: str, opciones) -> str | None:
-    clave = _sin_tildes(nombre or "").strip()
+    clave = re.sub(r"^modo\s+", "", _sin_tildes(nombre or "").strip())
     opciones = list(opciones)
+    if not clave:
+        return None
     if clave in opciones:
         return clave
     m = difflib.get_close_matches(clave, opciones, n=1, cutoff=0.5)
-    return m[0] if m else next((o for o in opciones if o in clave or clave in o), None)
+    return m[0] if m else next((o for o in opciones if re.search(rf"\b{re.escape(o)}\b", clave)), None)
 
 
 def _tarea(modo: dict, texto: str) -> str | None:
@@ -97,8 +109,8 @@ def _tarea(modo: dict, texto: str) -> str | None:
     t = _sin_tildes(texto or "")
     if not t:
         return None
-    for clave, d in tareas.items():
-        if clave in t or any(p in t for p in d.get("palabras", [])):
+    for clave, d in tareas.items():  # palabras completas: «cad» no debe coincidir con «cada»
+        if any(re.search(rf"\b{re.escape(p)}\b", t) for p in [clave, *d.get("palabras", [])]):
             return clave
     return _elegir(t, tareas)
 
@@ -122,14 +134,18 @@ async def entrar(ctx, nombre: str, tarea: str | None = None, juego: str | None =
         return (f"Antes de activar el modo {clave}, PREGUNTA al usuario: «{m['pregunta']}» (opciones: {opciones}, u otra cosa). "
                 f"Con su respuesta llama otra vez a activar_modo con nombre='{clave}' y tarea=<lo que diga>.")
     anterior = activo()
-    if anterior and anterior["nombre"] != clave:
+    mismo = bool(anterior and anterior["nombre"] == clave)
+    if anterior and not mismo:
         await salir(ctx, silencioso=True)
     hechos = []
     estado = {"nombre": clave, "desde": time.time(), "desde_hora": datetime.now().strftime("%H:%M"), "auto": auto,
               "tarea": (m["tareas"][tarea_clave].get("nombre", tarea_clave) if tarea_clave else tarea) or None}
+    if mismo:  # repetir el modo activo no debe perder el volumen de antes ni la marca del modo noche automático
+        estado.update({k: anterior[k] for k in ("volumen_antes", "auto", "noche_de", "desde", "desde_hora") if k in anterior})
     if "volumen" in m:
         r = await _paso("volumen_pc", {"nivel": str(m["volumen"])}, ctx)
-        estado["volumen_antes"] = (re.search(r"antes (\d+)", r) or [None, None])[1]
+        if not mismo:
+            estado["volumen_antes"] = (re.search(r"antes (\d+)", r) or [None, None])[1]
         hechos.append(r)
     if m.get("musica"):
         hechos.append(await _paso("poner_musica", {"peticion": m["musica"]}, ctx))
@@ -192,14 +208,29 @@ async def listar_modos(ctx):
                                    "o para agregar una tarea al modo trabajo: {\"tareas\": {\"web\": {\"abrir\": [\"Visual Studio Code\"]}}}")},
              ["nombre", "datos"], peligrosa=True)
 async def crear_modo(ctx, nombre, datos):
-    nuevos = json.loads(datos) if isinstance(datos, str) else datos
+    try:
+        nuevos = json.loads(datos) if isinstance(datos, str) else dict(datos)
+    except ValueError as e:
+        return f"Los datos del modo no son JSON válido: {e}"
+    if not isinstance(nuevos, dict):
+        return "Los datos del modo deben ser un objeto JSON, ej. {\"musica\": \"lofi\"}."
+    lista = lambda v: [v] if isinstance(v, str) else [str(x) for x in (v or [])]  # noqa: E731 — «Notion» -> ["Notion"]
+    if "abrir" in nuevos:
+        nuevos["abrir"] = lista(nuevos["abrir"])
+    for d in (nuevos.get("tareas") or {}).values():
+        if isinstance(d, dict):
+            d["abrir"], d["palabras"] = lista(d.get("abrir")), lista(d.get("palabras"))
+    if "volumen" in nuevos:
+        nuevos["volumen"] = max(0, min(100, int(nuevos["volumen"])))
     modos = _modos()
     clave = _sin_tildes(nombre).strip()
+    if not clave:
+        return "El modo necesita un nombre."
     m = modos.setdefault(clave, {"descripcion": f"Modo {clave}"})
     if "tareas" in nuevos:
         m.setdefault("tareas", {}).update(nuevos.pop("tareas"))
     m.update(nuevos)
-    ARCHIVO.write_text(json.dumps(modos, ensure_ascii=False, indent=2), encoding="utf-8")
+    _escribir(modos)
     return f"Modo «{clave}» guardado: {json.dumps(m, ensure_ascii=False)[:400]}"
 
 
