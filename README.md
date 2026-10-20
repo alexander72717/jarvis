@@ -134,6 +134,18 @@ potente, y si la local intenta «fingir» una acción sin usar la herramienta, s
 Lo que dices en un dispositivo aparece en vivo en el otro. Desde el celular puedes pedir cosas al PC
 («baja el volumen de mi PC», «abre Spotify») si está encendido; si el servidor cae, el PC sigue solo.
 
+## Modos
+
+«Jarvis, modo juego» → pone música para jugar y abre Steam, o el juego que pidas («modo juego, quiero jugar
+Battlefield»: lo busca en tu biblioteca de Steam). «Modo trabajo» → pone música para concentrarte y pregunta
+**en qué vas a trabajar**: una PCB (KiCad), código (VS Code + GitHub Desktop), diseño 3D (Fusion + Bambu Studio),
+el robot VEX (VEXcode IQ) o Arduino, y abre lo que corresponde. Mientras un modo está activo JARVIS cambia su
+estilo (en juego responde en una frase; en trabajo, directo y técnico). «Sal del modo» deja el volumen como estaba.
+
+El **modo noche** se activa solo al atardecer (la hora real de tu ciudad) si no hay otro modo, baja el volumen y
+pone a JARVIS tranquilo; se apaga a las 6:00. Si lo apagas a mano, esa noche no vuelve. Crea o cambia modos por voz:
+«crea un modo estudio con lofi y Notion», «en modo trabajo, para web abre VS Code». Todo vive en `data/modos.json`.
+
 ## Impresión 3D con Bambu Lab
 
 «Jarvis, abre el soporte de la cámara» → busca el STL/3MF/OBJ/STEP en el PC y abre un **visor 3D** en tus
@@ -197,5 +209,5 @@ web/               interfaz HUD (reactor, matriz neuronal, voz)
 tests/             pruebas del router con proveedores simulados
 ```
 
-Pruebas: `.venv\Scripts\python -m tests.test_rotacion` y `.venv\Scripts\python -m tests.test_impresion3d`
+Pruebas: `.venv\Scripts\python -m tests.test_rotacion` `.venv\Scripts\python -m tests.test_impresion3d` y `-m tests.test_modos`
 Logs: `data\jarvis.log` · Detener: `scripts\detener.bat` · Arrancar con Windows: `scripts\instalar.ps1 -ConWindows`

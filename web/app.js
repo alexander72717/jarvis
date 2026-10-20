@@ -541,6 +541,10 @@ function manejar(ev) {
       tarjetaArchivo(ev);
       if (ev.origen && ev.origen.toLowerCase() !== miDispositivo()) aviso("ARCHIVO", `${ev.nombre} · desde ${ev.origen}`);
       return;
+    case "modo":
+      document.body.dataset.modo = ev.nombre || "";
+      aviso("MODO", ev.nombre ? `Modo ${ev.nombre}${ev.tarea ? " · " + ev.tarea : ""} activado` : "Modo desactivado");
+      return;
     case "anuncio":
       burbuja("assistant", ev.texto);
       subtitulo(ev.texto);

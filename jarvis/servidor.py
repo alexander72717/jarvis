@@ -165,6 +165,11 @@ async def vida(app):
     tareas.append(asyncio.create_task(tecla.escuchar(tecla_pulsada)))
     tareas.append(asyncio.create_task(musica.observador()))
     tareas.append(asyncio.create_task(ENLACE.mantener(router, memoria)))
+    if not ENLACE.activo:  # el modo noche automático lo lleva quien conversa: el cerebro, o el PC si va solo
+        from . import modos
+
+        tareas.append(asyncio.create_task(modos.vigilante_noche(
+            lambda: herramientas.Contexto(router=router, memoria=memoria, canal="auto", difundir=difundir))))
     if config.ES_WINDOWS:
         from . import impresion3d
 

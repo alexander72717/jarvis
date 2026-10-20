@@ -118,6 +118,9 @@ class Agente:
                 vistos.add(h["id"])
                 lista.append(f"- (#{h['id']}) {h['texto']}")
         memorias = ("\nLo que sabes del usuario (memoria a largo plazo):\n" + "\n".join(lista[:18])) if lista else ""
+        from . import modos
+
+        memorias += modos.instruccion()
         trato = config.tratamiento()
         nombre_u = config.usuario() or "tu usuario"
         if compacto:
@@ -130,8 +133,10 @@ class Agente:
 
     def sistema_local(self) -> str:
         trato = config.tratamiento()
+        from . import modos
+
         return PERSONALIDAD_CORTA.format(nombre=config.nombre_asistente(), usuario=config.usuario() or "tu usuario",
-                                         trato=f"Llámalo «{trato}» a veces." if trato else "")
+                                         trato=f"Llámalo «{trato}» a veces." if trato else "") + modos.instruccion()
 
     async def contexto_local(self, consulta: str) -> str:
         u = await ubicacion()
