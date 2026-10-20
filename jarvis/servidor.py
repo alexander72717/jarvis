@@ -144,8 +144,8 @@ async def tarea_recordatorios():
         await asyncio.sleep(3)
 
 
-async def avisar_impresion(texto: str):
-    """Avisos de las impresoras 3D: en todas las pantallas (a través del cerebro si el PC está enlazado) y en Telegram."""
+async def avisar_pantallas(texto: str):
+    """Avisos de fondo (impresoras 3D, Claude Code…): en todas las pantallas (vía el cerebro si el PC está enlazado) y en Telegram."""
     try:
         if ENLACE.activo:
             await ENLACE.pedir("POST", "/api/anunciar", json={"texto": texto})
@@ -165,6 +165,9 @@ async def vida(app):
     tareas.append(asyncio.create_task(tecla.escuchar(tecla_pulsada)))
     tareas.append(asyncio.create_task(musica.observador()))
     tareas.append(asyncio.create_task(ENLACE.mantener(router, memoria)))
+    from . import claude_code
+
+    claude_code.AVISAR = avisar_pantallas
     if not ENLACE.activo:  # el modo noche automático lo lleva quien conversa: el cerebro, o el PC si va solo
         from . import modos
 
@@ -173,7 +176,7 @@ async def vida(app):
     if config.ES_WINDOWS:
         from . import impresion3d
 
-        tareas.append(asyncio.create_task(impresion3d.vigilante(avisar_impresion)))
+        tareas.append(asyncio.create_task(impresion3d.vigilante(avisar_pantallas)))
     if telegram.activo:
         tareas.append(asyncio.create_task(telegram.bucle()))
     log.info("JARVIS listo en http://%s:%s", config.HOST, config.PUERTO)

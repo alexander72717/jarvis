@@ -116,6 +116,8 @@ GRUPOS = [
     ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
     ({"notion_ver", "notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "calendario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
     ({"poner_musica", "mis_gustos_musicales", "multimedia"}, ("música", "musica", "canción", "cancion", "spotify", "pon algo", "ponme", "playlist", "lista de", "escuchar", "artista", "banda", "álbum", "album", "concentrarme", "relajarme", "gustos")),
+    ({"preguntar_a_claude", "encargar_a_claude", "seguir_con_claude", "tareas_claude"}, ("claude", "complej", "programa", "código", "codigo",
+                                                                                           "script", "función", "funcion", "error en", "bug", "refactor", "revisa el proyecto", "investiga a fondo")),
     ({"activar_modo", "salir_modo", "modos", "crear_modo", "abrir_juego"}, ("modo", "jugar", "juego", "trabajar", "a trabajar", "noche", "steam", "partida")),
     ({"modelo_3d_abrir", "impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d", "controlar_impresion_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina", "plato", "pieza", "relleno", "soporte", "pared", "pendiente", "pausa", "reanuda", "cancela", "cómo va", "como va", "progreso")),
     ({"buscar_archivos", "enviar_archivo", "archivos_recibidos", "guardar_en_pc"}, ("archivo", "documento", "pdf", "foto", "imagen", "video",
@@ -887,4 +889,4 @@ async def guardar_en_pc(ctx, archivo=None, carpeta="Descargas"):
 
 
 # herramientas que viven en su propio módulo (se registran al importarlas)
-from . import impresion3d, modos, notion  # noqa: E402,F401
+from . import claude_code, impresion3d, modos, notion  # noqa: E402,F401

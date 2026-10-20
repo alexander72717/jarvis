@@ -134,6 +134,23 @@ potente, y si la local intenta «fingir» una acción sin usar la herramienta, s
 Lo que dices en un dispositivo aparece en vivo en el otro. Desde el celular puedes pedir cosas al PC
 («baja el volumen de mi PC», «abre Spotify») si está encendido; si el servidor cae, el PC sigue solo.
 
+## Claude Code: el experto para lo difícil
+
+Para lo que supera a las IAs gratis (programar, revisar un proyecto, encontrar un error difícil, investigar a
+fondo), JARVIS le pasa la tarea a **Claude Code con tu propia cuenta de Claude** (no usa la API ni llaves; el plan
+Pro comparte su límite con el chat). Instálalo una vez en PowerShell:
+
+```powershell
+irm https://claude.ai/install.ps1 | iex
+```
+
+Abre una terminal nueva, escribe `claude` e inicia sesión con tu cuenta. Después:
+- «Jarvis, pregúntale a Claude por qué falla el robot de carritos» → solo lee y responde, no cambia nada.
+- «Encárgale a Claude que agregue X al proyecto JARVIS» → trabaja de verdad (edita archivos de esa carpeta);
+  JARVIS te pide confirmación antes.
+- Corre en segundo plano: sigues hablando con JARVIS y te avisa en tus pantallas cuando Claude termina.
+- «Dile a Claude que también…» sigue la misma conversación; «¿qué te respondió Claude?» muestra todo.
+
 ## Modos
 
 «Jarvis, modo juego» → pone música para jugar y abre Steam, o el juego que pidas («modo juego, quiero jugar
@@ -209,5 +226,5 @@ web/               interfaz HUD (reactor, matriz neuronal, voz)
 tests/             pruebas del router con proveedores simulados
 ```
 
-Pruebas: `.venv\Scripts\python -m tests.test_rotacion`, `-m tests.test_impresion3d` y `-m tests.test_modos`
+Pruebas: `.venv\Scripts\python -m tests.test_rotacion`, `-m tests.test_impresion3d`, `-m tests.test_modos` y `-m tests.test_claude`
 Logs: `data\jarvis.log` · Detener: `scripts\detener.bat` · Arrancar con Windows: `scripts\instalar.ps1 -ConWindows`
