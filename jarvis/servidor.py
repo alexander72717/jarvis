@@ -110,6 +110,8 @@ def _traer_ventana() -> bool:
         return False
     if u.IsIconic(hwnd):
         u.ShowWindow(hwnd, 9)  # restaurar si estaba minimizada
+    elif not u.IsWindowVisible(hwnd):
+        u.ShowWindow(hwnd, 5)  # el panel lateral la esconde en vez de minimizarla
     u.keybd_event(0x12, 0, 0, 0)  # un Alt "fantasma" deja a Windows ceder el foco
     u.SetForegroundWindow(hwnd)
     u.keybd_event(0x12, 0, 2, 0)
@@ -283,7 +285,7 @@ async def estado():
 def _estado_local(hora):
     return {
         "nombre": config.nombre_asistente(), "usuario": config.usuario(), "tratamiento": config.tratamiento(),
-        "voz": config.voz(), "saludo": "Buenos días" if 5 <= hora < 12 else "Buenas tardes" if hora < 19 else "Buenas noches",
+        "voz": config.voz(), "voz_tono": config.voz_tono(), "saludo": "Buenos días" if 5 <= hora < 12 else "Buenas tardes" if hora < 19 else "Buenas noches",
         "ia": router.estado(), "herramientas": len(herramientas.todas()), "telegram": telegram.activo,
         "recordatorios": memoria.recordatorios(), "pc": config.ES_WINDOWS, "version": VERSION_WEB,
         "ia_local": {"modo": config.env("IA_LOCAL_MODO", "auto"), "disponible": router.hay_local(), "cuotas_bajas": router.cuotas_bajas()},
@@ -341,7 +343,7 @@ async def recargar():
 
 
 EXTRA_EDITABLES = {"CLOUDFLARE_ACCOUNT_ID", "OLLAMA_URL", "TELEGRAM_TOKEN", "TELEGRAM_USUARIOS", "USUARIO_NOMBRE", "USUARIO_TRATAMIENTO",
-                   "CIUDAD", "PAIS", "VOZ", "NOTION_TOKEN", "SPOTIFY_CLIENT_ID", "IA_LOCAL_MODO", "SERVIDOR_HOST", "SERVIDOR_USUARIO", "SERVIDOR_MAC", "JARVIS_NOMBRE"}
+                   "CIUDAD", "PAIS", "VOZ", "VOZ_TONO", "NOTION_TOKEN", "SPOTIFY_CLIENT_ID", "IA_LOCAL_MODO", "SERVIDOR_HOST", "SERVIDOR_USUARIO", "SERVIDOR_MAC", "JARVIS_NOMBRE"}
 
 
 def _editables() -> set:
@@ -388,6 +390,17 @@ async def precalentar():
         return {"ok": True}
     asyncio.create_task(agente.precalentar())
     return {"ok": True}
+
+
+MARCO_LATERAL: dict = {}
+
+
+@app.api_route("/api/lateral", methods=["GET", "POST"])
+async def marco_lateral(request: Request):
+    """El panel lateral cuenta cuánto mide la barra de título que dibuja Edge; el lanzador la deja fuera de la vista."""
+    if request.method == "POST":
+        MARCO_LATERAL.update({k: int(v) for k, v in (await request.json()).items() if k in ("arriba", "lados", "abajo", "lienzo")})
+    return MARCO_LATERAL
 
 
 @app.post("/api/silencio")

@@ -97,6 +97,12 @@
   <button id="btn-enviar" class="enviar" title="Enviar"></button>
 </footer>
 
+<!-- lienzo visual: lo que JARVIS dibuja con mostrar_visual (marco aislado, sin red) -->
+<aside id="lienzo" class="lienzo" aria-hidden="true">
+  <div class="lienzo-cab"><span class="lienzo-punto"></span><b id="lienzo-titulo"></b><button id="lienzo-cerrar" title="Cerrar">✕</button></div>
+  <iframe id="lienzo-marco" sandbox="allow-scripts" title="Lienzo de JARVIS"></iframe>
+</aside>
+
 <div id="velo" class="velo"></div>
 <div id="avisos"></div>
 
@@ -117,7 +123,7 @@
 <div id="ajustes" class="cajon oculto">
   <div class="cajon-cab"><h2>AJUSTES</h2><button id="cerrar-ajustes" class="icono">✕</button></div>
   <label>Voz de JARVIS<select id="sel-voz"></select></label>
-  <label>Velocidad de voz<input id="vel-voz" type="range" min="-30" max="40" step="5" value="5"><span id="vel-txt">+5%</span></label>
+  <label>Velocidad de voz<input id="vel-voz" type="range" min="-30" max="40" step="5" value="20"><span id="vel-txt">+20%</span></label>
   <label class="check"><input id="chk-voz" type="checkbox" checked> Responder con voz</label>
   <label class="check"><input id="chk-sonidos" type="checkbox" checked> Efectos de sonido</label>
   <label>IA local del servidor

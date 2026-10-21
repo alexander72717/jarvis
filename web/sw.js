@@ -1,7 +1,7 @@
 /* Service worker de JARVIS: hace que se pueda instalar como app.
    Siempre pide la versión nueva a la red; solo si no hay conexión muestra la copia guardada
    (o un aviso), así nunca te quedas con una interfaz vieja. La conversación (WebSocket y /api) no se guarda. */
-const CACHE = "jarvis-v5";
+const CACHE = "jarvis-v6";
 const BASICOS = ["/", "/static/estilo.css", "/static/app.js", "/static/icono-192.png"];
 
 self.addEventListener("install", (e) => {

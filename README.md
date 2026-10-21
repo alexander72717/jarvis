@@ -134,6 +134,22 @@ potente, y si la local intenta «fingir» una acción sin usar la herramienta, s
 Lo que dices en un dispositivo aparece en vivo en el otro. Desde el celular puedes pedir cosas al PC
 («baja el volumen de mi PC», «abre Spotify») si está encendido; si el servidor cae, el PC sigue solo.
 
+## Panel lateral y lienzo visual
+
+- **Panel lateral** (`JARVIS-lateral.bat`): una pestañita de luz en el borde de la pantalla; al tocarla, JARVIS se
+  desliza desde ese lado (orbe y respuesta) y se vuelve a guardar cuando sigues con otra cosa. Clic derecho: fijarlo
+  abierto, cambiar de lado o abrir la ventana grande. Usa su propio perfil de Edge, aparte de tu navegador.
+- **Lienzo visual**: cuando ver ayuda más que oír («muéstrame cómo está el PC», «explícame a fondo…») JARVIS dibuja
+  junto al chat un panel tipo HUD con medidores, diagramas animados, pasos o comparaciones. Va en un marco aislado,
+  sin acceso a la página ni a internet.
+- **Voz**: en Edge habla con la voz integrada del navegador (empieza en ~0,1 s); el núcleo queda de respaldo. En
+  Ajustes también salen las voces «Multilingual» (las más naturales) y `VOZ_TONO` en `.env` cambia el tono.
+- JARVIS responde de memoria lo que ya sabe y busca en internet solo lo reciente; si una acción tarda, te dice
+  «en ello» mientras trabaja. Nuevas herramientas: `cerrar` (como darle a la X) y `crear_carpeta`.
+
+Ideas tomadas de [Maicol](https://github.com/streamlinxcompany-creator/Maicol), una versión modificada de JARVIS;
+sin sus cambios de permisos: todo lo delicado sigue pidiendo confirmación.
+
 ## Claude Code: el experto para lo difícil
 
 Para lo que supera a las IAs gratis (programar, revisar un proyecto, encontrar un error difícil, investigar a
