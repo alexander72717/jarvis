@@ -119,12 +119,18 @@ def _traer_ventana() -> bool:
 
 
 async def tecla_pulsada():
-    """Tecla rombo: si la interfaz está abierta, escucha (o calla); si no, la abre lista para escuchar."""
+    """Tecla rombo: trae la ventana grande; si no está pero sí la pestaña del borde, desliza el panel lateral;
+    si no hay ninguna, abre la ventana grande. Una vez visible, escucha (o calla)."""
     log.info("tecla rombo pulsada (%d pantallas abiertas)", len(clientes))
-    if clientes:
-        await asyncio.to_thread(_traer_ventana)
+    ventana = await asyncio.to_thread(_traer_ventana)
+    lateral = not ventana and _lateral_vivo()
+    if lateral:
+        LATERAL["abrir"] += 1
+    if clientes and (ventana or lateral):
         await difundir({"type": "tecla"})
         return
+    if lateral:
+        return  # el panel todavía se está creando: se abre igual
     from . import aperturas
 
     ruta = aperturas.ruta_navegador("edge") or aperturas.ruta_navegador("chrome")
@@ -397,10 +403,20 @@ MARCO_LATERAL: dict = {}
 
 @app.api_route("/api/lateral", methods=["GET", "POST"])
 async def marco_lateral(request: Request):
-    """El panel lateral cuenta cuánto mide la barra de título que dibuja Edge; el lanzador la deja fuera de la vista."""
+    """El panel lateral cuenta cuánto mide la barra de título que dibuja Edge; el lanzador la deja fuera de la vista.
+    El lanzador lo consulta cada 250 ms: así el núcleo sabe que la pestaña del borde está viva y puede pedirle que se abra."""
     if request.method == "POST":
         MARCO_LATERAL.update({k: int(v) for k, v in (await request.json()).items() if k in ("arriba", "lados", "abajo", "lienzo")})
-    return MARCO_LATERAL
+    else:
+        LATERAL["visto"] = time.time()
+    return {**MARCO_LATERAL, "abrir": LATERAL["abrir"]}
+
+
+LATERAL = {"visto": 0.0, "abrir": 0}  # «abrir» sube en 1 cada vez que la tecla rombo pide mostrar el panel
+
+
+def _lateral_vivo() -> bool:
+    return time.time() - LATERAL["visto"] < 3
 
 
 @app.post("/api/silencio")

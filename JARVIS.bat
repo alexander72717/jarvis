@@ -20,6 +20,8 @@ if errorlevel 1 (
   )
 )
 :listo
+rem La pestaña del panel lateral en el borde de la pantalla (si ya está, no se duplica)
+if exist ".venv\Scripts\pythonw.exe" start "" ".venv\Scripts\pythonw.exe" scripts\jarvis_lateral.pyw --cerrado
 rem Ventana de app sin barras (Edge o Chrome). Ambos traen reconocimiento de voz.
 where msedge >nul 2>nul && (start "" msedge --app=http://127.0.0.1:8765 --window-size=1500,920 --autoplay-policy=no-user-gesture-required & exit /b)
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app=http://127.0.0.1:8765 --window-size=1500,920 --autoplay-policy=no-user-gesture-required & exit /b)

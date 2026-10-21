@@ -8,7 +8,23 @@ import uvicorn
 from . import config
 
 
+_MUTEX = None
+
+
+def ya_corre() -> bool:
+    """Un solo núcleo por PC: si JARVIS.bat y el panel lateral lo arrancan a la vez, el segundo se va."""
+    global _MUTEX  # el mutex vive mientras corre el núcleo
+    if not config.ES_WINDOWS:
+        return False
+    import ctypes
+
+    _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "JARVIS.Nucleo")
+    return ctypes.windll.kernel32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
+
+
 def main():
+    if ya_corre():
+        return
     archivo = logging.FileHandler(config.DATOS / "jarvis.log", encoding="utf-8")
     manejadores = [archivo]
     if sys.stdout is not None:  # con pythonw no hay consola

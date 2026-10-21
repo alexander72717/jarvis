@@ -343,6 +343,7 @@ class Lateral:
         """Lo que mide la barra de título que Edge dibuja dentro de la ventana (lo cuenta la propia página)."""
         try:
             m = json.loads(urllib.request.urlopen(URL + "/api/lateral", timeout=1).read())
+            self._estado = m  # incluye «abrir»: la tecla rombo pide mostrar el panel
             if m.get("arriba") is not None:
                 self._marco = m
         except (OSError, ValueError):
@@ -427,6 +428,14 @@ class Lateral:
                 self.cambiar_ancho(pedido)
                 if abrir:
                     self.mostrar()  # quiere enseñar algo: el panel sale solo
+            # tecla rombo sin la ventana grande abierta: el núcleo sube «abrir» y el panel se desliza
+            abrir_pedido = int(getattr(self, "_estado", {}).get("abrir", 0) or 0)
+            if not hasattr(self, "abrir_visto"):
+                self.abrir_visto = abrir_pedido  # al arrancar no se abre por pedidos viejos
+            elif abrir_pedido != self.abrir_visto:
+                self.abrir_visto = abrir_pedido
+                if not self.abierto:
+                    self.mostrar()
             if self.abierto:
                 if not (self.hwnd and user32.IsWindow(self.hwnd)) or not user32.IsWindowVisible(self.hwnd):
                     self.abierto = False  # lo cerraron (Alt+F4)
