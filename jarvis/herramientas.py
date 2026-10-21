@@ -119,7 +119,7 @@ GRUPOS = [
     ({"preguntar_a_claude", "encargar_a_claude", "seguir_con_claude", "tareas_claude"}, ("claude", "complej", "programa", "código", "codigo",
                                                                                            "script", "función", "funcion", "error en", "bug", "refactor", "revisa el proyecto", "investiga a fondo")),
     ({"activar_modo", "salir_modo", "modos", "crear_modo", "abrir_juego"}, ("modo", "jugar", "juego", "trabajar", "a trabajar", "noche", "steam", "partida")),
-    ({"modelo_3d_abrir", "impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d", "controlar_impresion_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina", "plato", "pieza", "relleno", "soporte", "pared", "pendiente", "pausa", "reanuda", "cancela", "cómo va", "como va", "progreso")),
+    ({"modelo_3d_abrir", "abrir_en_bambu", "impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d", "controlar_impresion_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina", "plato", "pieza", "relleno", "soporte", "pared", "pendiente", "pausa", "reanuda", "cancela", "cómo va", "como va", "progreso")),
     ({"buscar_archivos", "enviar_archivo", "archivos_recibidos", "guardar_en_pc"}, ("archivo", "documento", "pdf", "foto", "imagen", "video",
       "tráeme", "traeme", "mándame", "mandame", "pásame", "pasame", "envíame", "enviame", "descarga", "guárdalo", "guardalo", "guarda", "compart")),
     ({"como_abro"}, ("cómo abres", "como abres", "dónde abres", "donde abres", "cómo abro", "como abro", "recuerdas abrir")),

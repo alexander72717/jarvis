@@ -185,9 +185,9 @@ pantallas (y en Telegram) si una se detiene por un error —con su código, p. e
 [07FF-8006]»—, si lleva 15 min sin avanzar o cuando termina. Los platos en espera se mandan solos cuando se
 libera una impresora con el color. Por voz: «¿cómo van las impresiones?», «pausa / reanuda / cancela la de la
 Taller». Para esto activa en Bambu Studio *Preferencias → Administración de varios dispositivos* (y elige
-ahí hasta 6 impresoras): JARVIS lee esa tabla con el OCR de Windows. Todo trabaja en segundo plano: no mueve
-tu ratón (solo trae Bambu Studio al frente un instante al enviar o confirmar). Déjalo abierto detrás de tus
-ventanas, sin minimizar.
+ahí hasta 6 impresoras): JARVIS lee esa tabla con el OCR de Windows. Todo trabaja en segundo plano en su propia ventana, «JARVIS-trabajo»: se abre detrás de tus ventanas, no mueve
+tu ratón y, si al enviar o confirmar tiene que traer Bambu Studio al frente un instante, te devuelve el foco.
+Déjala abierta, sin minimizar. Para trabajar tú en un archivo: «abre el soporte de la cámara en Bambu».
 
 Requisitos: **Bambu Studio** instalado con tu cuenta iniciada. No hace falta el «Modo desarrollador»: conservas
 la nube y Bambu Handy, porque JARVIS lamina con la línea de comandos de Bambu Studio y envía cada plato desde su

@@ -161,6 +161,17 @@ def _clic(x, y, ref):
     time.sleep(0.4)
 
 
+def _al_fondo(foco: int | None = None):
+    """Manda las ventanas de JARVIS detrás de todo y te devuelve el foco (si lo tenías en otra app)."""
+    for h in _mias() & {x for x, _ in _ventanas()}:
+        _u32.SetWindowPos(h, 1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)  # HWND_BOTTOM; SWP_NOSIZE|NOMOVE|NOACTIVATE
+    if foco and _u32.IsWindow(foco) and foco not in _mias() and _u32.GetForegroundWindow() != foco:  # también tu propia ventana de Bambu
+        try:
+            _control(foco).SetActive()
+        except Exception:  # noqa: BLE001 — si Windows no deja devolver el foco, no es grave
+            pass
+
+
 def _tocar(ctrl):
     _clic(*_centro(ctrl.BoundingRectangle), ctrl)
 
@@ -279,13 +290,17 @@ def _abrir_en_studio(ruta: Path) -> str:
         raise RuntimeError("No encuentro Bambu Studio instalado (bambu-studio.exe).")
     _limpiar()
     antes = {h for h, _ in _ventanas()}
-    subprocess.Popen([str(EXE), str(ruta)])
+    foco = _u32.GetForegroundWindow()
+    inicio = subprocess.STARTUPINFO()
+    inicio.dwFlags, inicio.wShowWindow = subprocess.STARTF_USESHOWWINDOW, 4  # SW_SHOWNOACTIVATE: no te quita el foco
+    subprocess.Popen([str(EXE), str(ruta)], startupinfo=inicio)
     for _ in range(90):
         time.sleep(1)
         nuevas = [(h, t) for h, t in _ventanas() if h not in antes and t.endswith("BambuStudio") and DIALOGO not in t]
         if nuevas:
             ESTADO.update(hwnd=nuevas[0][0], abierto=str(ruta))
             _anotar(nuevas[0][0])
+            _al_fondo(foco)
             time.sleep(4)  # termina de cargar el archivo
             for h, t in _ventanas():
                 if t == "Peligro":  # p. ej. «El archivo no contiene ninguna información geométrica»
@@ -481,7 +496,7 @@ def _elegir_fila(d, i):
 def _sonda() -> Path:
     """Un cubito laminado: basta para abrir la ventana de envío y revisar las impresoras sin un modelo."""
     carpeta = TRABAJOS / "sonda"
-    final = carpeta / "sonda.gcode.3mf"
+    final = carpeta / "JARVIS-trabajo.gcode.3mf"  # el título que verás: es la ventana de trabajo de JARVIS
     if final.exists():
         return final
     carpeta.mkdir(parents=True, exist_ok=True)
@@ -766,7 +781,13 @@ async def _en_hilo(fn, *args):
         import uiautomation as auto
 
         with auto.UIAutomationInitializerInThread():
-            return fn(*args)
+            # las listas desplegables de Bambu solo responden con su ventana al frente: al terminar, el foco vuelve a ti
+            foco = _u32.GetForegroundWindow() if _u32 else None
+            try:
+                return fn(*args)
+            finally:
+                if _u32:
+                    _al_fondo(foco)
     return await asyncio.get_running_loop().run_in_executor(_hilo, correr)
 
 
@@ -804,8 +825,9 @@ def _ventana_vigia():
         _abrir_en_studio(_sonda())
         h = ESTADO["hwnd"]
     ESTADO["hwnd"] = h
-    if _u32.IsIconic(h):  # minimizada no se puede leer: se restaura sin quitarte el foco
+    if _u32.IsIconic(h):  # minimizada no se puede leer: se restaura sin foco y detrás de tus ventanas
         _u32.ShowWindow(h, 4)  # SW_SHOWNOACTIVATE
+        _al_fondo()
         time.sleep(1.5)
     return _control(h)
 
@@ -1051,7 +1073,7 @@ AJUSTES = {
 
 @herramienta("modelo_3d_abrir", "Abre un modelo 3D (STL, 3MF, OBJ, STEP) para imprimir: lo busca en el PC, lo separa en piezas "
              "(componentes del diseño o cuerpos sueltos) y muestra un visor 3D interactivo en las pantallas del usuario, donde puede "
-             "elegir piezas, copias y ajustes. Primer paso de toda impresión 3D.",
+             "elegir piezas, copias y ajustes. Primer paso de toda impresión 3D (no lo abre en Bambu Studio: para eso, abrir_en_bambu).",
              {"archivo": P("string", "Nombre aproximado o ruta del archivo, ej. 'soporte camara' o 'fantasma.3mf'")}, ["archivo"], solo_pc=True)
 async def modelo_3d_abrir(ctx, archivo):
     rutas = await asyncio.to_thread(_resolver, archivo)
@@ -1077,6 +1099,24 @@ async def modelo_3d_abrir(ctx, archivo):
     return (f"Abrí {modelo.ruta.name}: {len(modelo.piezas)} pieza(s) en {len(modelo.grupos)} grupo(s). El visor 3D ya está en las "
             f"pantallas del usuario (puede girarlo, elegir piezas, copias y ajustes y pulsar Imprimir).{avisos}\nPiezas:\n{modelo.resumen()}\n"
             "Si el usuario lo pide por voz: impresion_3d_planear para ver platos y tiempos, imprimir_3d para enviarlo.")
+
+
+@herramienta("abrir_en_bambu", "Abre en Bambu Studio el modelo 3D que pida el usuario (STL, 3MF, OBJ, STEP) para trabajar él en "
+             "esa ventana. Para «abre X en Bambu». Para imprimir con JARVIS usa modelo_3d_abrir.",
+             {"archivo": P("string", "Nombre aproximado o ruta del archivo, ej. 'soporte camara'")}, ["archivo"], solo_pc=True)
+async def abrir_en_bambu(ctx, archivo):
+    rutas = await asyncio.to_thread(_resolver, archivo)
+    if not rutas:
+        return f"No encontré modelos 3D con «{archivo}» en Escritorio, Descargas ni Documentos."
+    if len(rutas) > 1 and not Path(archivo).is_file():
+        exactos = [r for r in rutas if _sin_tildes(r.stem) == _sin_tildes(Path(archivo).stem)]
+        if len(exactos) != 1:
+            return "Encontré varios, ¿cuál abro?\n" + "\n".join(f"- {r}" for r in rutas)
+        rutas = exactos
+    if not EXE.exists():
+        return "No encuentro Bambu Studio instalado."
+    subprocess.Popen([str(EXE), str(rutas[0])])  # ventana normal, al frente: la pidió el usuario
+    return f"Abrí {rutas[0].name} en Bambu Studio."
 
 
 @herramienta("impresoras_3d", "Lista las impresoras Bambu Lab de la cuenta del usuario: si están libres u ocupadas y qué colores "
