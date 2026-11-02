@@ -15,7 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/estilo.css">
 </head>
-<body>
+<body data-modo="espera">
 <canvas id="fondo"></canvas>
 
 <!-- secuencia de arranque: el clic también desbloquea el audio del navegador -->
@@ -24,7 +24,7 @@
     <div class="logo-arranque">J.A.R.V.I.S.</div>
     <div class="sub-arranque">Just A Rather Very Intelligent System · núcleo local</div>
     <pre id="log-arranque"></pre>
-    <button id="btn-iniciar" class="btn-iniciar" disabled>INICIALIZANDO…</button>
+    <button id="btn-iniciar" class="btn-iniciar" disabled>Un momento…</button>
   </div>
 </div>
 
@@ -161,19 +161,19 @@
 <div id="modal" class="modal oculto">
   <div class="modal-caja">
     <div class="modal-icono">⚠</div>
-    <h2>AUTORIZACIÓN REQUERIDA</h2>
+    <h2>¿Lo autorizas?</h2>
     <p id="modal-texto"></p>
     <pre id="modal-args"></pre>
     <div class="modal-botones">
-      <button id="modal-no" class="btn-no">DENEGAR</button>
-      <button id="modal-si" class="btn-si">AUTORIZAR</button>
+      <button id="modal-no" class="btn-no">No</button>
+      <button id="modal-si" class="btn-si">Sí, hazlo</button>
     </div>
     <small>También puedes decir «sí» o «no»</small>
   </div>
 </div>
 
 <div id="ajustes" class="cajon oculto">
-  <div class="cajon-cab"><h2>AJUSTES</h2><button id="cerrar-ajustes" class="icono">✕</button></div>
+  <div class="cajon-cab"><h2>Ajustes</h2><button id="cerrar-ajustes" class="icono">✕</button></div>
   <label>Voz de JARVIS<select id="sel-voz"></select></label>
   <label>Velocidad de voz<input id="vel-voz" type="range" min="-30" max="40" step="5" value="20"><span id="vel-txt">+20%</span></label>
   <label class="check"><input id="chk-voz" type="checkbox" checked> Responder con voz</label>
@@ -186,31 +186,43 @@
       <option value="no">Apagada</option>
     </select>
   </label>
-  <label class="check"><input id="chk-hud" type="checkbox"> Interfaz HUD clásica (paneles siempre visibles)</label>
+  <label class="check"><input id="chk-escucha" type="checkbox"> Escuchar siempre la palabra «JARVIS»</label>
   <label class="check"><input id="chk-silenciar" type="checkbox" checked> Pausar la música y silenciar el PC mientras JARVIS habla o te escucha</label>
-  <label class="check"><input id="chk-ligero" type="checkbox"> Modo ligero (menos animación; se activa solo con batería)</label>
   <div class="botones-ajustes">
-    <button id="btn-avisos" class="oculto">🔔 Avisos en este celular (aunque JARVIS esté cerrado)</button>
+    <button id="btn-avisos" class="oculto">Avisos en este celular</button>
     <button id="btn-control-sw" class="oculto"></button>
-    <button id="btn-control" class="oculto">🖥 Controlar el PC desde aquí</button>
-    <button id="btn-instalar" class="oculto">📲 Instalar JARVIS como app</button>
-    <button id="btn-celular">📱 Conectar el celular</button>
+    <button id="btn-control" class="oculto">Controlar el PC desde aquí</button>
+    <button id="btn-instalar" class="oculto">Instalar JARVIS como app</button>
+    <button id="btn-celular">Conectar el celular</button>
     <div id="qr-celular" class="oculto"></div>
+  </div>
+  <details>
+  <summary>Llaves de IA gratis</summary>
+  <p class="vacio">Todas son gratuitas y sin tarjeta. Cuantas más pongas, más tokens tienes: JARVIS rota entre ellas solo. Puedes poner varias llaves del mismo proveedor separadas por coma.</p>
+  <div id="llaves"></div>
+  <h3>Personal y conexiones</h3>
+  <div id="datos"></div>
+  <button id="btn-guardar-llaves" class="btn-guardar">Guardar y conectar</button>
+  <div class="botones-ajustes"><button id="btn-probar">Probar conexiones</button></div>
+  <div id="resultado-prueba"></div>
+  </details>
+  <details>
+  <summary>Memoria</summary>
+  <div id="memorias"></div>
+  </details>
+  <details>
+  <summary>Recordatorios</summary>
+  <div id="lista-recordatorios"></div>
+  </details>
+  <details>
+  <summary>Avanzado</summary>
+  <label class="check"><input id="chk-hud" type="checkbox"> Interfaz HUD clásica</label>
+  <label class="check"><input id="chk-ligero" type="checkbox"> Modo ligero (se activa solo con batería)</label>
+  <div class="botones-ajustes">
     <button id="btn-recargar">Recargar proveedores (.env)</button>
     <button id="btn-enfriar">Reiniciar enfriamientos</button>
   </div>
-  <h3>LLAVES DE IA GRATIS</h3>
-  <p class="vacio">Todas son gratuitas y sin tarjeta. Cuantas más pongas, más tokens tienes: JARVIS rota entre ellas solo. Puedes poner varias llaves del mismo proveedor separadas por coma.</p>
-  <div id="llaves"></div>
-  <h3>PERSONAL Y CONEXIONES</h3>
-  <div id="datos"></div>
-  <button id="btn-guardar-llaves" class="btn-guardar">GUARDAR Y CONECTAR</button>
-  <div class="botones-ajustes"><button id="btn-probar">Probar conexiones (llamada real a cada IA)</button></div>
-  <div id="resultado-prueba"></div>
-  <h3>MEMORIA A LARGO PLAZO</h3>
-  <div id="memorias"></div>
-  <h3>RECORDATORIOS</h3>
-  <div id="lista-recordatorios"></div>
+  </details>
 </div>
 
 <script type="importmap">{"imports": {"three": "/static/vendor/three/three.module.min.js", "three/addons/": "/static/vendor/three/jsm/"}}</script>

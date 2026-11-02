@@ -304,6 +304,20 @@ function dibujarReactor(dt) {
   g2.clearRect(0, 0, w, h);
   g2.save(); g2.translate(cx, cy);
 
+  if (!S.hud) {  // interfaz limpia: un orbe que respira; el color y el pulso dicen qué está haciendo
+    const r = R * (0.3 + 0.012 * Math.sin(tiempo * 1.4) + nivel * 0.14);
+    const luz = g2.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 2.6);
+    luz.addColorStop(0, rgba(C, 0.14 + nivel * 0.25)); luz.addColorStop(1, rgba(C, 0));
+    g2.fillStyle = luz; g2.beginPath(); g2.arc(0, 0, r * 2.6, 0, Math.PI * 2); g2.fill();
+    g2.fillStyle = rgba(C, 0.9); g2.beginPath(); g2.arc(0, 0, r, 0, Math.PI * 2); g2.fill();
+    if (S.modo === "pensando" || S.modo === "herramienta") {
+      g2.strokeStyle = rgba(C, 0.8); g2.lineWidth = Math.max(1.5, R * 0.012); g2.lineCap = "round";
+      g2.beginPath(); g2.arc(0, 0, r * 1.45, tiempo * 3, tiempo * 3 + 1.4); g2.stroke();
+    }
+    g2.restore();
+    return;
+  }
+
   // halo
   const halo = g2.createRadialGradient(0, 0, R * 0.1, 0, 0, R * 0.95);
   halo.addColorStop(0, rgba(C, 0.18 + nivel * 0.25)); halo.addColorStop(0.5, rgba(C, 0.04)); halo.addColorStop(1, "rgba(0,0,0,0)");
@@ -891,6 +905,7 @@ const escucha = {
   pintar() {
     $("#btn-mic").classList.toggle("activo", this.directo || this.esperandoComando);
     $("#btn-escucha").classList.toggle("on", this.continua);
+    $("#chk-escucha").checked = this.continua;
   },
 };
 
@@ -1084,12 +1099,13 @@ const SUGERENCIAS = ["¿Qué clima hace hoy?", "Dame las noticias del día", "Mi
 
 async function arrancar() {
   const log = $("#log-arranque");
-  const linea = (t) => new Promise((ok) => { log.textContent += t + "\n"; setTimeout(ok, 160 + Math.random() * 160); });
+  const linea = (t) => new Promise((ok) => { log.textContent += t + "\n"; setTimeout(ok, S.hud ? 160 + Math.random() * 160 : 0); });
   await linea("> Iniciando núcleo cognitivo ...................");
   let info = null;
   for (let i = 0; !info; i++) {
     const r = await fetch("/api/estado", { cache: "no-store" }).catch(() => null);
     if (r && r.status === 401) {
+      log.classList.add("problema");
       await linea("> Sesión no válida en este dispositivo.");
       await linea("  En el PC: ⚙ → 📱 Conectar el celular, y escanea el QR.");
       $("#btn-iniciar").textContent = "SIN SESIÓN";
@@ -1099,6 +1115,7 @@ async function arrancar() {
     if (info) break;
     if (i === 5) {
       // en el celular casi siempre es Tailscale apagado: lo decimos claro y seguimos intentando solos
+      log.classList.add("problema");
       await linea("> Sin conexión con el cerebro.");
       await linea("  ¿Está encendido Tailscale en este dispositivo? Reintentando…");
       $("#btn-iniciar").textContent = "ESPERANDO CONEXIÓN…";
@@ -1106,6 +1123,7 @@ async function arrancar() {
     await new Promise((ok) => setTimeout(ok, i < 5 ? 700 : 3000));
   }
   if (log.textContent.includes("Sin conexión")) await linea("> Conexión recuperada.");
+  log.classList.remove("problema");
   S.info = info;
   const provs = info.ia.proveedores.filter((p) => p.configurado && p.ranuras);
   await linea(`> Matriz neuronal ............ ${provs.length} IAs gratis · ${info.ia.total} ranuras`);
@@ -1116,7 +1134,7 @@ async function arrancar() {
   await linea(`> Enlace Telegram ............ ${info.telegram ? "activo" : "inactivo"}`);
   await linea(`> Recordatorios pendientes ... ${info.recordatorios.length}`);
   await linea("> Todos los sistemas operativos.");
-  const b = $("#btn-iniciar"); b.disabled = false; b.textContent = "INICIAR SISTEMA";
+  const b = $("#btn-iniciar"); b.disabled = false; b.textContent = S.hud ? "INICIAR SISTEMA" : "Empezar";
   b.focus();
   if (new URLSearchParams(location.search).get("tecla")) {
     // abierta con la tecla rombo: arranca sola y se pone a escuchar
@@ -1191,6 +1209,7 @@ function iniciarUI() {
   };
   $("#btn-mic").onclick = () => escucha.alternarDirecto();
   $("#btn-escucha").onclick = () => escucha.alternarContinua();
+  $("#chk-escucha").onchange = () => escucha.alternarContinua();
   $("#btn-ojo").onclick = () => enviar("Mira mi pantalla y dime lo más importante que ves.");
   $("#btn-silencio").onclick = () => { S.vozActiva = !S.vozActiva; guardar("voz", S.vozActiva); if (!S.vozActiva) callar(); pintarBotonVoz(); };
   $("#btn-config").onclick = abrirAjustes;
@@ -1765,7 +1784,7 @@ async function pintarInterruptor() {
   if (!e) return false;
   const b = $("#btn-control-sw");
   b.classList.remove("oculto");
-  b.textContent = e.control ? "🔴 Apagar el control remoto" : "🟢 Prender el control remoto";
+  b.textContent = e.control ? "Apagar el control remoto" : "Prender el control remoto";
   $("#btn-control").classList.toggle("oculto", !(ES_REMOTO && e.control));
   return e.control;
 }
