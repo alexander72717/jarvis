@@ -8,6 +8,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from fastapi import Body, FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -199,6 +200,7 @@ app = FastAPI(title="JARVIS", lifespan=vida)
 app.mount("/static", StaticFiles(directory=config.WEB), name="static")
 
 LOCALES = {"127.0.0.1", "::1", "localhost"}
+REENVIADO = ("x-forwarded-for", "forwarded", "tailscale-user-login")  # un proxy local entrega lo de fuera desde 127.0.0.1
 CODIGOS: dict[str, float] = {}  # códigos de emparejamiento de un solo uso -> vencimiento
 PASES = config.DATOS / "pases.json"  # sesiones de los dispositivos emparejados (no son la clave maestra)
 
@@ -224,13 +226,29 @@ def _nuevo_pase(quien: str) -> str:
     return pase
 
 
+def _es_local(conexion) -> bool:
+    """Local de verdad: desde este PC y por su dirección (un dominio ajeno que apunte a 127.0.0.1 no cuenta)."""
+    origen = conexion.client.host if conexion.client else ""
+    host = urlsplit(f"//{conexion.headers.get('host', '')}").hostname
+    return origen in LOCALES and host in LOCALES and not any(h in conexion.headers for h in REENVIADO)
+
+
+def _origen_valido(conexion) -> bool:
+    """Una web abierta en el navegador no puede hablarle a JARVIS: solo sus propias páginas (sin Origin no es un navegador)."""
+    origen = conexion.headers.get("origin")
+    return not origen or urlsplit(origen).netloc in (conexion.headers.get("host"), conexion.headers.get("x-forwarded-host"))
+
+
 @app.middleware("http")
 async def proteger(request: Request, siguiente):
-    """Si JARVIS_CLAVE está definida, quien entre desde otra máquina (LAN, CasaOS) debe conocerla."""
+    """Quien no esté en este PC (LAN, CasaOS) debe conocer JARVIS_CLAVE; sin clave, solo entra lo local."""
+    if not _origen_valido(request):
+        return JSONResponse({"error": "origen no permitido"}, 403)
     clave = config.env("JARVIS_CLAVE")
-    origen = request.client.host if request.client else ""
-    if not clave or origen in LOCALES or request.url.path.startswith("/static") or request.url.path in ("/entrar", "/manifest.webmanifest", "/sw.js"):
+    if _es_local(request) or request.url.path.startswith("/static") or request.url.path in ("/entrar", "/manifest.webmanifest", "/sw.js"):
         return await siguiente(request)
+    if not clave:
+        return JSONResponse({"error": "solo desde este PC"}, 403)
     codigo = request.query_params.get("emparejar")
     if codigo and CODIGOS.pop(codigo, 0) > time.time():
         # el QR del celular trae un código de un solo uso; se cambia por una sesión guardada en el navegador
@@ -246,10 +264,11 @@ async def proteger(request: Request, siguiente):
 
 
 def _ws_permitido(ws: WebSocket) -> bool:
+    if not _origen_valido(ws):
+        return False
     clave = config.env("JARVIS_CLAVE")
-    origen = ws.client.host if ws.client else ""
-    return (not clave or origen in LOCALES or ws.cookies.get("jarvis_clave") == clave
-            or ws.headers.get("x-jarvis-clave") == clave or _pase_valido(ws.cookies.get("jarvis_pase")))
+    return _es_local(ws) or bool(clave) and (ws.cookies.get("jarvis_clave") == clave or ws.headers.get("x-jarvis-clave") == clave
+                                             or _pase_valido(ws.cookies.get("jarvis_pase")))
 
 
 @app.get("/")
