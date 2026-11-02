@@ -494,7 +494,11 @@ async def precalentar():
     return {"ok": True}
 
 
-MARCO_LATERAL: dict = {}
+ARCHIVO_MARCO = config.DATOS / "marco_lateral.json"
+try:  # se recuerda entre reinicios del núcleo: el panel solo lo vuelve a contar cuando cambia de tamaño
+    MARCO_LATERAL: dict = {k: v for k, v in json.loads(ARCHIVO_MARCO.read_text(encoding="utf-8")).items() if k != "lienzo"}
+except (OSError, ValueError):
+    MARCO_LATERAL = {}
 
 
 @app.api_route("/api/lateral", methods=["GET", "POST"])
@@ -502,7 +506,16 @@ async def marco_lateral(request: Request):
     """El panel lateral cuenta cuánto mide la barra de título que dibuja Edge; el lanzador la deja fuera de la vista.
     El lanzador lo consulta cada 250 ms: así el núcleo sabe que la pestaña del borde está viva y puede pedirle que se abra."""
     if request.method == "POST":
-        MARCO_LATERAL.update({k: int(v) for k, v in (await request.json()).items() if k in ("arriba", "lados", "abajo", "lienzo")})
+        nuevo = {k: int(v) for k, v in (await request.json()).items() if k in ("arriba", "lados", "abajo", "lienzo")}
+        if nuevo.get("arriba") == 0 and MARCO_LATERAL.get("arriba"):
+            # ya sin marco, Edge mide mal su barra (0) al cambiar de tamaño: no se pisa la buena, o la barra vuelve a verse
+            for k in ("arriba", "lados", "abajo"):
+                nuevo.pop(k, None)
+        MARCO_LATERAL.update(nuevo)
+        try:
+            ARCHIVO_MARCO.write_text(json.dumps(MARCO_LATERAL), encoding="utf-8")
+        except OSError:
+            pass
     else:
         LATERAL["visto"] = time.time()
     return {**MARCO_LATERAL, "abrir": LATERAL["abrir"]}
