@@ -12,7 +12,6 @@ from pathlib import Path
 from . import impresion3d
 from .herramientas import P, herramienta
 
-CARPETA = impresion3d.TRABAJOS / "piezas"
 PROHIBIDO = re.compile(r"\b(import|include|use|surface)\b")
 INSTRUCCIONES = """Eres un diseñador mecánico experto en OpenSCAD. Responde SOLO con código OpenSCAD, sin explicaciones.
 Reglas: unidades en milímetros; la pieza apoyada en z=0 y sobre su cara más ancha; imprimible en FDM sin soportes si se puede;
@@ -55,8 +54,9 @@ def compilar(codigo: str, destino: Path) -> str | None:
 async def crear_pieza(ctx, descripcion, nombre):
     if not ejecutable():
         return "Falta OpenSCAD en este PC. Se instala con: winget install OpenSCAD.OpenSCAD"
-    CARPETA.mkdir(parents=True, exist_ok=True)
-    destino = CARPETA / (re.sub(r"[^\w-]+", "_", nombre.strip())[:50] + ".stl")
+    carpeta = impresion3d.TRABAJOS / "piezas"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    destino = carpeta / (re.sub(r"[^\w-]+", "_", nombre.strip())[:50] + ".stl")
     mensajes = [{"role": "system", "content": INSTRUCCIONES}, {"role": "user", "content": descripcion}]
     error = "sin intentos"
     for _ in range(3):  # si no compila, la IA ve el error y lo corrige

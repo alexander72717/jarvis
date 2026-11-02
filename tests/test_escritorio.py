@@ -1,4 +1,4 @@
-﻿"""Portapapeles con memoria, modo enfoque, modos sugeridos y respaldo local sin internet.
+"""Portapapeles con memoria, modo enfoque, modos sugeridos y respaldo local sin internet.
 Ejecutar: python -m tests.test_escritorio
 """
 import asyncio
@@ -41,7 +41,7 @@ class MemoriaFalsa:
 def main():
     for secreto in ("sk-abc123456789", "AIzaSyA1234567890", "Tr0ub4dor&3xyz", "ghp_abcdefghijklmnop"):
         assert e.parece_secreto(secreto), secreto
-    for normal in ("hola mundo", "SpixBuild", "https://ejemplo.com/pagina", "el sensor BMP280 está dañado", "12345678"):
+    for normal in ("hola mundo", "Impresora", "https://ejemplo.com/pagina", "el sensor BMP280 está dañado", "12345678"):
         assert not e.parece_secreto(normal), normal
     e.HISTORIAL.clear()
     e.anotar("el sensor BMP280 está dañado")

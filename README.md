@@ -246,7 +246,7 @@ Pregunta «¿qué has hecho hoy?» para ver cada acción, desde dónde se pidió
 
 ## Cámara de las impresoras y piezas desde una idea
 
-«¿Cómo va la SpixBuild?» mira por la cámara con la IA. Mientras JARVIS vigila una impresión, revisa cada 15 minutos y, si ve un fallo dos veces seguidas, avisa. Nunca cancela solo. Con la luz de la impresora apagada no puede ver nada, y lo dice.
+«¿Cómo va la impresora?» mira por la cámara con la IA. Mientras JARVIS vigila una impresión, revisa cada 15 minutos y, si ve un fallo dos veces seguidas, avisa. Nunca cancela solo. Con la luz de la impresora apagada no puede ver nada, y lo dice.
 
 «Diseña un soporte de 40 mm para este sensor» escribe el modelo, genera el STL con [OpenSCAD](https://openscad.org) (`winget install OpenSCAD.OpenSCAD`) y lo abre en el visor 3D. Imprimirlo sigue pidiendo confirmación.
 
