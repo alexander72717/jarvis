@@ -233,7 +233,7 @@ Corren sin nadie presente: lo que pediría confirmación se deniega, y una tarea
 
 ## Atajos del PC
 
-- **Win+Shift+J:** selecciona un texto o un error en cualquier programa y JARVIS te lo explica en español.
+- **Win+Shift+J:** selecciona un texto o un error en cualquier programa y JARVIS te lo traduce o explica en español, en pocos segundos.
 - **Win+Shift+K:** dicta, y lo que digas se escribe donde esté el cursor. Otra pulsación termina.
 - «¿Qué copié sobre el sensor?» busca en lo que copiaste. El historial vive solo en la RAM y no guarda lo que parece una contraseña.
 - «Modo enfoque 50 minutos» calla a JARVIS y las notificaciones de Windows, y te avisa al terminar.

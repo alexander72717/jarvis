@@ -2,6 +2,7 @@
 Ejecutar: python -m tests.test_escritorio
 """
 import asyncio
+import json
 import tempfile
 import time
 from pathlib import Path
@@ -73,6 +74,34 @@ def main():
     assert proactivo.nota_modo("steamwebhelper")[0] == "modo:juego" and proactivo.nota_modo("Fusion360")[0] == "modo:trabajo"
     assert proactivo.nota_modo("notepad") is None
     print("✓ en enfoque no interrumpe y sugiere el modo según lo que abres")
+
+    from jarvis import servidor as sv
+
+    class Pantalla:
+        def __init__(self, **q):
+            self.query_params, self.enviados = q, []
+
+        async def send_text(self, crudo):
+            self.enviados.append(json.loads(crudo))
+
+    grande, lateral, tablero = Pantalla(), Pantalla(panel="lateral"), Pantalla(dispositivo="tablero")
+    sv.clientes.clear()
+    sv.clientes.update({grande, lateral, tablero})
+    e.seleccion, mensajes = (lambda: "printer jam"), []
+
+    async def rapido(m):
+        mensajes.append(m)
+        return "La impresora se atascó."
+
+    sv.completar_rapido = rapido
+    asyncio.run(sv.explicar_seleccion())
+    assert [x["type"] for x in lateral.enviados] == ["explicando", "explicacion"] and not grande.enviados and not tablero.enviados
+    assert lateral.enviados[-1]["texto"] == "La impresora se atascó." and "printer jam" in mensajes[0][1]["content"]
+    e.seleccion = lambda: ""
+    asyncio.run(sv.explicar_seleccion())
+    assert "No vi" in lateral.enviados[-1]["texto"] and len(mensajes) == 1, "sin texto no gasta IA"
+    sv.clientes.clear()
+    print("✓ explicar va directo al modelo rápido y responde en el panel lateral")
 
     router = RouterSinNube()
     agente = Agente(router, MemoriaFalsa())

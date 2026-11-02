@@ -643,7 +643,7 @@ function subtitulo(texto, usuario = false) {
 
 /* ====================== conexión ====================== */
 function conectar() {
-  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws" + (LATERAL ? "?panel=lateral" : ""));
   S.ws = ws;
   ws.onopen = async () => {
     $("#sub-marca").textContent = "EN LÍNEA";
@@ -733,8 +733,15 @@ function manejar(ev) {
       document.body.dataset.modo = ev.nombre || "";
       aviso("MODO", ev.nombre ? `Modo ${ev.nombre}${ev.tarea ? " · " + ev.tarea : ""} activado` : "Modo desactivado");
       return;
-    case "pedir":  // Win+Shift+J: explicar lo seleccionado
-      enviar(ev.texto);
+    case "explicando":  // Win+Shift+J: se ve al instante que llegó
+      poner("pensando");
+      subtitulo("Leyendo…");
+      return;
+    case "explicacion":
+      poner("espera");
+      burbuja("assistant", ev.texto);
+      subtitulo(ev.texto);
+      decir(ev.texto);
       return;
     case "dictar":  // Win+Shift+K: lo dicho se escribe en el programa activo
       dictar({ alFinal: (t) => { if (t) fetch("/api/escribir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: t }) }).catch(() => {}); } });

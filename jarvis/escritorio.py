@@ -62,6 +62,9 @@ async def portapapeles_historial(ctx, buscar=None):
 def _api():
     u, k = ctypes.windll.user32, ctypes.windll.kernel32
     u.GetClipboardData.restype = ctypes.c_void_p
+    u.SetClipboardData.argtypes = [wintypes.UINT, ctypes.c_void_p]
+    k.GlobalAlloc.restype = ctypes.c_void_p
+    k.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
     k.GlobalLock.restype = ctypes.c_void_p
     k.GlobalLock.argtypes = [ctypes.c_void_p]
     k.GlobalUnlock.argtypes = [ctypes.c_void_p]
@@ -87,6 +90,19 @@ def leer_portapapeles() -> str | None:
         u.CloseClipboard()
 
 
+def poner_portapapeles(texto: str):
+    u, k = _api()
+    datos = texto.encode("utf-16-le") + b"\0\0"
+    h = k.GlobalAlloc(0x0002, len(datos))  # GMEM_MOVEABLE
+    p = k.GlobalLock(h)
+    ctypes.memmove(p, datos, len(datos))
+    k.GlobalUnlock(h)
+    if u.OpenClipboard(None):
+        u.EmptyClipboard()
+        u.SetClipboardData(CF_UNICODETEXT, h)  # desde aquí el portapapeles es dueño de la memoria
+        u.CloseClipboard()
+
+
 def _vigilar_portapapeles(parar: threading.Event):
     u = ctypes.windll.user32
     visto = u.GetClipboardSequenceNumber()
@@ -101,22 +117,36 @@ def _vigilar_portapapeles(parar: threading.Event):
 
 
 def seleccion() -> str:
-    """Copia lo seleccionado en el programa activo, sin perder lo que ya estaba copiado."""
+    """Copia lo seleccionado en el programa activo y devuelve al portapapeles el texto que tenía (una imagen copiada se pierde)."""
     u = ctypes.windll.user32
     fin = time.time() + 1.5
     while time.time() < fin and any(u.GetAsyncKeyState(t) & 0x8000 for t in (VK_SHIFT, VK_LWIN, VK_RWIN)):
         time.sleep(0.02)  # con Win o Shift aún abajo, Ctrl+C sería otra combinación
+    time.sleep(0.08)  # Windows aún está procesando el atajo: un Ctrl+C inmediato a veces se pierde
     previa = u.GetClipboardSequenceNumber()
-    u.keybd_event(VK_CONTROL, 0, 0, 0)
-    u.keybd_event(VK_C, 0, 0, 0)
-    u.keybd_event(VK_C, 0, 2, 0)
-    u.keybd_event(VK_CONTROL, 0, 2, 0)
-    for _ in range(25):
+    guardado = leer_portapapeles()
+    for intento in range(3):  # hay programas lentos para copiar; si no respondió, se insiste
+        u.keybd_event(VK_CONTROL, 0, 0, 0)
+        u.keybd_event(VK_C, 0, 0, 0)
         time.sleep(0.02)
-        if u.GetClipboardSequenceNumber() != previa:
-            time.sleep(0.03)
-            return leer_portapapeles() or ""
+        u.keybd_event(VK_C, 0, 2, 0)
+        u.keybd_event(VK_CONTROL, 0, 2, 0)
+        for _ in range(30):
+            time.sleep(0.02)
+            if u.GetClipboardSequenceNumber() != previa:
+                time.sleep(0.05)
+                texto = leer_portapapeles() or ""
+                if guardado is not None:
+                    poner_portapapeles(guardado)
+                log.info("selección copiada en el intento %d (%d caracteres)", intento + 1, len(texto))
+                return texto
+    log.info("no se copió nada: sin selección, o el programa no deja copiar")
     return ""
+
+
+def _ver_error(tarea):
+    if not tarea.cancelled() and tarea.exception():
+        log.error("el atajo falló: %r", tarea.exception())
 
 
 def _teclas(loop, explicar, dictar, parar: threading.Event):
@@ -128,7 +158,9 @@ def _teclas(loop, explicar, dictar, parar: threading.Event):
     m = wintypes.MSG()
     while not parar.is_set() and u.GetMessageW(ctypes.byref(m), None, 0, 0) > 0:
         if m.message == WM_HOTKEY:
-            asyncio.run_coroutine_threadsafe(explicar() if m.wParam == 1 else dictar(), loop)
+            log.info("atajo %s pulsado", m.wParam)
+            tarea = asyncio.run_coroutine_threadsafe(explicar() if m.wParam == 1 else dictar(), loop)
+            tarea.add_done_callback(_ver_error)
 
 
 async def escuchar(explicar, dictar):
