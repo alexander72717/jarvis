@@ -136,6 +136,7 @@ Ejemplo de diagrama (algo que gira alrededor de un centro, con flujo y rótulos)
 INSTANTANEAS = {"ocultar_visual", "fecha_hora", "calcular", "multimedia", "recordar", "buscar_memoria", "olvidar", "estado_ia", "portapapeles",
                 "listar_recordatorios", "crear_recordatorio", "cancelar_recordatorio", "como_abro", "salir_modo", "abrir", "cerrar",
                 "abrir_control_remoto", "cerrar_control_remoto", "avisarme_cuando", "vigilancias",
+                "programar_tarea", "resumen_de_la_manana", "tareas_programadas",
                 # el tablero se arma en silencio: lo que se dice es la pregunta siguiente, no «ya lo estoy armando»
                 "saca_analiticas", "tablero", "mostrar_tablero", "tableros", "terminar_analisis", "reorganizar_tablero"}
 
@@ -153,7 +154,7 @@ def escritorio() -> str:
     return str(Path.home() / "Desktop")
 
 
-CANALES = {"web": "su ventana de escritorio", "voz": "conversación por voz en el PC", "telegram": "Telegram desde el teléfono (lejos del PC)",
+CANALES = {"tarea": "una tarea programada: el usuario no está presente", "web": "su ventana de escritorio", "voz": "conversación por voz en el PC", "telegram": "Telegram desde el teléfono (lejos del PC)",
            "pc": "la pantalla del PC del usuario (con voz)",
            "celular": "el celular del usuario, quizá lejos del PC: las herramientas marcadas [En el PC] actúan en su computador si está encendido"}
 

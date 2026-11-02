@@ -213,6 +213,15 @@ async def decir_proactivo(frase: str):
     await a_las_pantallas_del_pc(frase)
 
 
+async def anunciar_tarea(texto: str):
+    """Lo que hizo una tarea programada: en las pantallas, en el celular siempre y en la conversación («sí, hazlo» tiene contexto)."""
+    memoria.guardar_mensaje(SESION_WEB, {"role": "assistant", "content": texto})
+    await difundir({"type": "anuncio", "texto": texto})
+    await avisar_celular(texto, forzar=True)
+    if telegram.activo:
+        await telegram.notificar(texto)
+
+
 async def completar_rapido(mensajes: list) -> str:
     if ENLACE.conectado:
         return (await ENLACE.pedir("POST", "/api/rapido", json={"mensajes": mensajes}, timeout=30))["texto"]
@@ -241,9 +250,11 @@ async def vida(app):
     from . import analisis
 
     analisis.DIFUNDIR = difundir
-    if not ENLACE.activo:  # el modo noche automático lo lleva quien conversa: el cerebro, o el PC si va solo
-        from . import modos
+    if not ENLACE.activo:  # el modo noche y las tareas programadas los lleva quien conversa: el cerebro, o el PC si va solo
+        from . import modos, tareas as tareas_programadas
 
+        tareas_programadas.ANUNCIAR = anunciar_tarea
+        tareas.append(asyncio.create_task(tareas_programadas.vigilar(agente)))
         tareas.append(asyncio.create_task(modos.vigilante_noche(
             lambda: herramientas.Contexto(router=router, memoria=memoria, canal="auto", difundir=difundir))))
     if config.ES_WINDOWS:

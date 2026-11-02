@@ -15,7 +15,7 @@ services:
     cpu_shares: 512
     ports:
       - "8765:8765"
-    env_file: .env
+    env_file: .env  # pon TZ=Tu/Zona ahí: las horas programadas y el modo noche dependen de ella
     environment:
       JARVIS_HOST: 0.0.0.0
       JARVIS_DATA: /app/data

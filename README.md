@@ -221,6 +221,12 @@ Ideas del fork Maicol, adaptadas al cerebro en el servidor y sin sus permisos fl
 - **Habilidades:** lo que Claude Code resuelve una vez queda como script en `data/habilidades/`. Cada ejecución pide confirmación.
 - **Control remoto:** pantalla del PC en vivo con ratón y teclado desde un celular emparejado. **Apagado por defecto:** se prende con ⚙ → «Prender el control remoto» o diciendo «prende el control remoto» (pide confirmación). Queda guardado como `CONTROL_REMOTO` en el `.env` del PC, y las pantallas del PC avisan cuando alguien lo toma. La IA solo puede abrir el panel, no mover nada.
 
+## Tareas programadas y resumen de la mañana
+
+«Todos los días a las 7 dame mi resumen», «los lunes a las 9 revisa cómo van las impresoras». El cerebro las hace solo y te avisa en las pantallas y en el celular.
+
+Corren sin nadie presente: lo que pediría confirmación se deniega, y una tarea no puede crear otras. En el servidor, define `TZ` en su `.env` (por ejemplo `TZ=America/Bogota`) o las horas saldrán corridas.
+
 ## JARVIS para tus amigos
 
 Versión autónoma: no usa tus llaves ni se conecta a tu PC. Cada amigo puede poner sus llaves gratis

@@ -105,6 +105,8 @@ def _corto(texto: str, maximo: int) -> str:
 # Mandar las 31 herramientas en cada petición cuesta ~2.400 tokens: se mandan solo las relevantes.
 NUCLEO = {"fecha_hora", "buscar_web", "calcular", "recordar", "buscar_memoria", "crear_recordatorio", "abrir", "cerrar", "estado_ia"}
 GRUPOS = [
+    ({"programar_tarea", "resumen_de_la_manana", "tareas_programadas"}, ("todos los días", "todos los dias", "cada día", "cada dia", "cada mañana",
+      "cada lunes", "cada semana", "programa", "tarea", "resumen de la mañana", "resumen diario", "entre semana", "fines de semana")),
     ({"saca_analiticas", "tablero", "mostrar_tablero", "tableros", "terminar_analisis", "reorganizar_tablero", "borrar_analisis"},
      ("analític", "analitic", "analiz", "tablero", "esquema", "aclar", "pensar", "pensamiento", "lluvia de ideas", "mapa mental",
       "idea de negocio", "decidir", "decisión", "decision", "reabr", "retom", "proyecto", "organiza", "ordena", "enlist", "lista",
@@ -1039,4 +1041,4 @@ async def guardar_en_pc(ctx, archivo=None, carpeta="Descargas"):
 
 
 # herramientas que viven en su propio módulo (se registran al importarlas)
-from . import analisis, claude_code, habilidades, impresion3d, modos, notion, vigilancias  # noqa: E402,F401
+from . import analisis, claude_code, habilidades, impresion3d, modos, notion, tareas, vigilancias  # noqa: E402,F401
