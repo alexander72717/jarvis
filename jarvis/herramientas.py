@@ -109,7 +109,7 @@ GRUPOS = [
      ("analític", "analitic", "analiz", "tablero", "esquema", "aclar", "pensar", "pensamiento", "lluvia de ideas", "mapa mental",
       "idea de negocio", "decidir", "decisión", "decision", "reabr", "retom", "proyecto", "organiza", "ordena", "enlist", "lista",
       "borra", "bórra", "olvida", "elimina", "historial")),
-    ({"abrir_control_remoto", "cerrar_control_remoto"}, ("control remoto", "controlar el pc", "controlar el computador", "manejar el pc", "mouse remoto")),
+    ({"abrir_control_remoto", "cerrar_control_remoto", "interruptor_control_remoto"}, ("control remoto", "controlar el pc", "controlar el computador", "manejar el pc", "mouse remoto")),
     ({"avisarme_cuando", "vigilancias"}, ("avís", "avis", "notifica", "cuando termine", "cuando acabe", "cuando se", "vigila", "pendiente de")),
     ({"habilidades", "usar_habilidad"}, ("habilidad", "aprendiste", "lo de siempre", "como la otra vez")),
     ({"clima"}, ("clima", "tiempo hace", "llov", "lluvia", "temperatura", "calor", "frío", "frio", "pronóstico", "pronostico", "sol ")),
@@ -861,6 +861,21 @@ async def enviar_al_telefono(ctx, mensaje):
     return "No le llegó: en el celular falta tocar ⚙ → «🔔 Avisos en este celular» una vez."
 
 
+@herramienta("interruptor_control_remoto", "Prende o apaga el permiso de ver y manejar el PC desde un celular emparejado. "
+             "No abre el panel: para eso está abrir_control_remoto.",
+             {"accion": P("string", "Qué hacer", ["prender", "apagar"])}, ["accion"], peligrosa=True, solo_pc=True)
+async def interruptor_control_remoto(ctx, accion):
+    from . import control_remoto
+    from .enlace import ENLACE
+
+    prender = accion == "prender"
+    await asyncio.to_thread(control_remoto.guardar, prender)
+    await ENLACE.anunciar_control()
+    if prender and not control_remoto.activo():
+        return "Guardé el permiso, pero falta pyautogui en este PC: no va a funcionar hasta instalarlo."
+    return "Control remoto prendido." if prender else "Control remoto apagado."
+
+
 @herramienta("abrir_control_remoto", "Abre en el celular un panel con la pantalla del PC en vivo para tocarla y controlar el mouse. Úsala cuando el usuario pida control remoto, mouse remoto o controlar el computador desde el celular.")
 async def abrir_control_remoto(ctx):
     if not ctx.difundir:
@@ -869,7 +884,7 @@ async def abrir_control_remoto(ctx):
     from . import control_remoto
 
     if not (REGISTRO.hay_control() or control_remoto.activo()):
-        return "El control remoto está apagado: se prende con CONTROL_REMOTO=1 en el .env del PC. Díselo así."
+        return "El control remoto está apagado. Ofrécele prenderlo con interruptor_control_remoto."
     await ctx.difundir({"type": "control_remoto", "abrir": True})
     return ("Listo: en el celular quedó la pantalla del PC en vivo. Tocar = clic, mantener presionado = clic derecho, "
             "arrastrar con un dedo = arrastrar, dos dedos = rueda, botón ⌨ = teclado. Dilo en una frase corta.")

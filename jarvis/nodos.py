@@ -37,7 +37,9 @@ class Registro:
         try:
             while True:
                 m = json.loads(await ws.receive_text())
-                if m.get("type") == "resultado":
+                if m.get("type") == "control_estado":
+                    nodo.control = bool(m.get("activo"))
+                elif m.get("type") == "resultado":
                     f = nodo.pendientes.pop(m.get("id"), None)
                     if f and not f.done():
                         f.set_result(str(m.get("resultado", "")))

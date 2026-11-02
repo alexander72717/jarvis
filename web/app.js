@@ -1759,6 +1759,23 @@ async function activarAvisos() {
 }
 
 if (ES_REMOTO && "serviceWorker" in navigator) { $("#btn-avisos").classList.remove("oculto"); $("#btn-avisos").onclick = activarAvisos; }
-fetch("/api/estado").then((r) => r.json()).then((e) => {
-  if (ES_REMOTO && e.control) { $("#btn-control").classList.remove("oculto"); $("#btn-control").onclick = () => { $("#ajustes").classList.add("oculto"); abrirControl(); }; }
-}).catch(() => {});
+$("#btn-control").onclick = () => { $("#ajustes").classList.add("oculto"); abrirControl(); };
+async function pintarInterruptor() {
+  const e = await fetch("/api/estado").then((r) => r.json()).catch(() => null);
+  if (!e) return false;
+  const b = $("#btn-control-sw");
+  b.classList.remove("oculto");
+  b.textContent = e.control ? "🔴 Apagar el control remoto" : "🟢 Prender el control remoto";
+  $("#btn-control").classList.toggle("oculto", !(ES_REMOTO && e.control));
+  return e.control;
+}
+$("#btn-control-sw").onclick = async () => {
+  const prendido = await pintarInterruptor();
+  if (!prendido && !confirm("¿Prender el control remoto? Un dispositivo emparejado podrá ver y manejar el PC.")) return;
+  const r = await fetch("/api/herramienta/interruptor_control_remoto", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accion: prendido ? "apagar" : "prender" }) }).then((x) => x.json()).catch(() => ({ error: "sin conexión" }));
+  aviso("CONTROL REMOTO", r.texto || r.error, !r.texto);
+  await new Promise((listo) => setTimeout(listo, 500));  // el cerebro se entera un instante después
+  pintarInterruptor();
+};
+pintarInterruptor();

@@ -219,7 +219,7 @@ Ideas del fork Maicol, adaptadas al cerebro en el servidor y sin sus permisos fl
 - **«Avísame cuando…»:** vigila en el PC que un programa se cierre o se abra, que termine una descarga, que el PC se desocupe o que aparezca un archivo.
 - **Proactivo:** comenta lo que de verdad importa (disco lleno, app colgada, batería) y ofrece lo que sueles abrir a esa hora. Un comentario cada 25 min como mucho, nunca en modo juego o noche. `PROACTIVO=0` en el `.env` del PC lo apaga.
 - **Habilidades:** lo que Claude Code resuelve una vez queda como script en `data/habilidades/`. Cada ejecución pide confirmación.
-- **Control remoto:** pantalla del PC en vivo con ratón y teclado desde un celular emparejado. **Apagado por defecto:** se prende con `CONTROL_REMOTO=1` en el `.env` del PC, y las pantallas del PC avisan cuando alguien lo toma. La IA solo puede abrir el panel, no mover nada.
+- **Control remoto:** pantalla del PC en vivo con ratón y teclado desde un celular emparejado. **Apagado por defecto:** se prende con ⚙ → «Prender el control remoto» o diciendo «prende el control remoto» (pide confirmación). Queda guardado como `CONTROL_REMOTO` en el `.env` del PC, y las pantallas del PC avisan cuando alguien lo toma. La IA solo puede abrir el panel, no mover nada.
 
 ## JARVIS para tus amigos
 

@@ -391,7 +391,7 @@ def _estado_local(hora):
         "recordatorios": memoria.recordatorios(), "pc": config.ES_WINDOWS, "version": VERSION_WEB,
         "ia_local": {"modo": config.env("IA_LOCAL_MODO", "auto"), "disponible": router.hay_local(), "cuotas_bajas": router.cuotas_bajas()},
         "nodos": REGISTRO.estado(), "cerebro": "este equipo", "pantallas": sorted(PANTALLAS.values()),
-        "modo": _modo(), "control": REGISTRO.hay_control(),
+        "modo": _modo(), "control": _control_prendido(),
     }
 
 
@@ -578,8 +578,8 @@ async def _anunciar_archivo(a: dict):
     await difundir({"type": "archivo", **a})
 
 
-# Botones del visor 3D: el clic en «Imprimir» ya es la confirmación del usuario (pregunta antes en la página)
-ACCIONES_UI = {"impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d"}
+# Botones de la interfaz: el clic ya es la confirmación del usuario (la página pregunta antes)
+ACCIONES_UI = {"interruptor_control_remoto", "impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d"}
 
 
 @app.post("/api/herramienta/{nombre}")

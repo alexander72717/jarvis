@@ -30,6 +30,21 @@ def activo() -> bool:
     return config.ES_WINDOWS and pyautogui is not None and config.env("CONTROL_REMOTO") == "1"
 
 
+def guardar(prender: bool):
+    """Cambia CONTROL_REMOTO en el .env de este PC, sin tocar las demás líneas."""
+    ruta = config.RAIZ / ".env"
+    lineas = ruta.read_text(encoding="utf-8").splitlines() if ruta.exists() else []
+    nueva = f"CONTROL_REMOTO={1 if prender else 0}"
+    for i, l in enumerate(lineas):
+        if l.split("=", 1)[0].strip() == "CONTROL_REMOTO":
+            lineas[i] = nueva
+            break
+    else:
+        lineas.append(nueva)
+    ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    config.recargar_env()
+
+
 def atender(m: dict) -> dict:
     """Lo único que entra desde fuera: pedir un cuadro o un gesto. El interruptor se revisa en cada pedido."""
     if not activo():

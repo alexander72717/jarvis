@@ -40,6 +40,7 @@ def cabeceras() -> dict:
 class Enlace:
     def __init__(self):
         self.conectado = False
+        self.ws_nodo = None
         self.http = httpx.AsyncClient(timeout=15)
 
     @property
@@ -56,7 +57,7 @@ class Enlace:
             try:
                 async with websockets.connect(url_ws("/nodo"), additional_headers=cabeceras(), max_size=None, ping_interval=20, open_timeout=10) as ws:
                     await ws.send(json.dumps({"type": "registro", "nombre": nombre, "herramientas": herramientas.para_nodo(), "control": self._control_activo()}, ensure_ascii=False))
-                    self.conectado, espera = True, 3
+                    self.ws_nodo, self.conectado, espera = ws, True, 3
                     log.info("conectado al cerebro %s como nodo «%s»", hub(), nombre)
                     ctx = Contexto(router=router, memoria=memoria, canal="nodo", sesion="nodo")
                     async for crudo in ws:
@@ -80,6 +81,11 @@ class Enlace:
         from . import control_remoto
 
         return control_remoto.activo()
+
+    async def anunciar_control(self):
+        """El interruptor cambió: el cerebro se entera sin esperar a que el PC se reconecte."""
+        if self.conectado and self.ws_nodo:
+            await self.ws_nodo.send(json.dumps({"type": "control_estado", "activo": self._control_activo()}))
 
     async def _control(self, ws, m):
         from . import control_remoto

@@ -4,6 +4,8 @@ Ejecutar: python -m tests.test_seguridad
 import asyncio
 import json
 import os
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 from jarvis import herramientas, servidor as s
@@ -37,7 +39,9 @@ async def relevo():
 
 def main():
     asyncio.run(relevo())
-    assert {n for n in herramientas.HERRAMIENTAS if "remoto" in n} == {"abrir_control_remoto", "cerrar_control_remoto"}  # la IA solo abre el panel
+    h = herramientas.HERRAMIENTAS
+    assert {n for n in h if "remoto" in n} == {"abrir_control_remoto", "cerrar_control_remoto", "interruptor_control_remoto"}  # nada mueve el PC
+    assert h["interruptor_control_remoto"]["peligrosa"] and h["interruptor_control_remoto"]["solo_pc"]  # la IA no lo prende sin confirmar
     from jarvis import control_remoto
     os.environ["CONTROL_REMOTO"] = "0"
     assert not control_remoto.activo() and "apagado" in control_remoto.atender({"t": "cuadro"})["error"]
@@ -56,6 +60,12 @@ def main():
     assert not s._ws_permitido(conexion("100.1.1.1", host="pc.ts.net"))
     assert s._ws_permitido(conexion("100.1.1.1", host="pc.ts.net", x_jarvis_clave="x"))  # el nodo no manda Origin
     assert s._ws_permitido(conexion("100.1.1.1", host="pc.ts.net", origin="https://pc.ts.net", x_jarvis_clave="x"))
+    from jarvis import config
+    raiz, config.RAIZ = config.RAIZ, Path(tempfile.mkdtemp())
+    (config.RAIZ / ".env").write_text("A=1\nCONTROL_REMOTO=0\nB=2\n", encoding="utf-8")
+    control_remoto.guardar(True)
+    assert (config.RAIZ / ".env").read_text(encoding="utf-8") == "A=1\nCONTROL_REMOTO=1\nB=2\n"
+    config.RAIZ = raiz
     print("seguridad: OK")
 
 
