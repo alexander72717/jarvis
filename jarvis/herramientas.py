@@ -107,6 +107,9 @@ NUCLEO = {"fecha_hora", "buscar_web", "calcular", "recordar", "buscar_memoria", 
 GRUPOS = [
     ({"proyecto_anotar", "proyecto_ver", "proyecto_resolver"}, ("proyecto", "en qué quedamos", "en que quedamos", "qué falta", "que falta",
       "pendiente", "decidimos", "cohete", "smurfit", "robot")),
+    ({"portapapeles_historial"}, ("copié", "copie", "portapapeles", "copiado")),
+    ({"modo_enfoque", "salir_enfoque"}, ("enfoque", "concentrar", "concentrarme", "no me interrumpas", "pomodoro")),
+    ({"uso_de_tokens"}, ("token", "cuota", "cuánto he gastado", "cuanto he gastado", "cuánto me queda", "cuanto me queda")),
     ({"hacer_respaldo"}, ("respaldo", "copia de seguridad", "backup")),
     ({"registro_de_acciones", "proyecto_ver"}, ("cierre del día", "cierre del dia", "registro", "qué hiciste", "que hiciste", "qué has hecho", "que has hecho", "actividad", "acciones")),
     ({"programar_tarea", "resumen_de_la_manana", "cierre_del_dia", "tareas_programadas"}, ("cierre del día", "cierre del dia", "todos los días", "todos los dias", "cada día", "cada dia", "cada mañana",
@@ -882,6 +885,14 @@ async def interruptor_control_remoto(ctx, accion):
     return "Control remoto prendido." if prender else "Control remoto apagado."
 
 
+@herramienta("uso_de_tokens", "Cuánto se ha gastado hoy por IA y cuántos modelos quedan libres.")
+async def uso_de_tokens(ctx):
+    e = ctx.router.estado()
+    filas = [f"- {p['nombre']}: {p['tokens_dia']:,} tokens en {p['peticiones_dia']} peticiones, {p['libres']}/{p['ranuras']} libres"
+             for p in e["proveedores"] if p["ranuras"]]
+    return f"Hoy: {e['tokens_hoy']:,} tokens en {e['peticiones_hoy']} peticiones.\n" + "\n".join(filas)
+
+
 @herramienta("abrir_control_remoto", "Abre en el celular un panel con la pantalla del PC en vivo para tocarla y controlar el mouse. Úsala cuando el usuario pida control remoto, mouse remoto o controlar el computador desde el celular.")
 async def abrir_control_remoto(ctx):
     if not ctx.difundir:
@@ -1045,4 +1056,4 @@ async def guardar_en_pc(ctx, archivo=None, carpeta="Descargas"):
 
 
 # herramientas que viven en su propio módulo (se registran al importarlas)
-from . import analisis, claude_code, habilidades, impresion3d, modos, notion, proyectos, registro, respaldo, tareas, vigilancias  # noqa: E402,F401
+from . import analisis, claude_code, enfoque, escritorio, habilidades, impresion3d, modos, notion, proyectos, registro, respaldo, tareas, vigilancias  # noqa: E402,F401

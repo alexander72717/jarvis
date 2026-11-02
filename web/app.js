@@ -733,6 +733,12 @@ function manejar(ev) {
       document.body.dataset.modo = ev.nombre || "";
       aviso("MODO", ev.nombre ? `Modo ${ev.nombre}${ev.tarea ? " · " + ev.tarea : ""} activado` : "Modo desactivado");
       return;
+    case "pedir":  // Win+Shift+J: explicar lo seleccionado
+      enviar(ev.texto);
+      return;
+    case "dictar":  // Win+Shift+K: lo dicho se escribe en el programa activo
+      dictar({ alFinal: (t) => { if (t) fetch("/api/escribir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: t }) }).catch(() => {}); } });
+      return;
     case "tablero_mostrar": {
       mostrarTablero(ev);
       const c = chip("◈ " + (ev.titulo || "Análisis") + " · ver", "visual");
@@ -991,7 +997,7 @@ function pintarIA(e) {
   S.ia = e;
   const cont = $("#proveedores");
   const activos = e.proveedores.filter((p) => p.configurado && p.ranuras);
-  $("#resumen-ia").textContent = `${activos.length} IAs · ${e.libres}/${e.total} ranuras`;
+  $("#resumen-ia").textContent = `${activos.length} IAs · ${e.libres}/${e.total} libres · ${(e.tokens_hoy || 0).toLocaleString("es")} tokens hoy`;
   pintarPildora();
   document.querySelectorAll("#estrategias button").forEach((b) => b.classList.toggle("activa", b.dataset.e === e.estrategia));
   const orden = [...e.proveedores].sort((a, b) => (b.configurado && b.ranuras ? 1 : 0) - (a.configurado && a.ranuras ? 1 : 0));

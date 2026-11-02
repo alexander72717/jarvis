@@ -138,7 +138,7 @@ Ejemplo de diagrama (algo que gira alrededor de un centro, con flujo y rótulos)
 INSTANTANEAS = {"ocultar_visual", "fecha_hora", "calcular", "multimedia", "recordar", "buscar_memoria", "olvidar", "estado_ia", "portapapeles",
                 "listar_recordatorios", "crear_recordatorio", "cancelar_recordatorio", "como_abro", "salir_modo", "abrir", "cerrar",
                 "abrir_control_remoto", "cerrar_control_remoto", "avisarme_cuando", "vigilancias",
-                "programar_tarea", "resumen_de_la_manana", "cierre_del_dia", "tareas_programadas", "proyecto_anotar",
+                "modo_enfoque", "salir_enfoque", "programar_tarea", "resumen_de_la_manana", "cierre_del_dia", "tareas_programadas", "proyecto_anotar",
                 # el tablero se arma en silencio: lo que se dice es la pregunta siguiente, no «ya lo estoy armando»
                 "saca_analiticas", "tablero", "mostrar_tablero", "tableros", "terminar_analisis", "reorganizar_tablero"}
 
@@ -315,6 +315,7 @@ class Agente:
             mensajes[0] = {**mensajes[0], "content": mensajes[0]["content"] + nota + ")"}
         await self.atajo(texto, ctx, emit, sesion, mensajes)
         final, meta, en_vuelta = "", {}, set()
+        probo_local = nivel == "local"
 
         for paso in range(10):
             fin = None
@@ -333,6 +334,13 @@ class Agente:
                     # la IA local no está o falló: la misma petición pasa a las potentes
                     nivel = "inteligente"
                     mensajes[0] = {"role": "system", "content": await self.sistema(canal, texto) + guia}
+                    await emit({"type": "reset"})
+                    continue
+                if not probo_local and self.router.hay_local():
+                    # sin internet o con todas las cuotas agotadas: mejor una respuesta local que ninguna
+                    probo_local, nivel = True, "local"
+                    log.warning("sin IAs en la nube (%s): sigo con la local", e)
+                    mensajes[0] = {"role": "system", "content": await self.sistema(canal, texto, compacto=True)}
                     await emit({"type": "reset"})
                     continue
                 final = str(e)

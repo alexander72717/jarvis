@@ -763,6 +763,8 @@ class Router:
             "activa": self.activa,
             "total": len(self.ranuras),
             "libres": sum(r.libre(ahora) for r in self.ranuras),
+            "tokens_hoy": sum(p["tokens_dia"] for p in provs.values()),
+            "peticiones_hoy": sum(p["peticiones_dia"] for p in provs.values()),
             "proveedores": [provs[i] for i in orden if i in provs],
         }
 

@@ -87,6 +87,26 @@ def _mas_pesado(campo: str) -> str:
     return mejor[0] if mejor else "?"
 
 
+def enfoque_activo() -> bool:
+    from . import enfoque
+
+    return enfoque.activo()
+
+
+# programas que delatan qué está haciendo, para sugerir el modo que corresponde
+SUGERENCIAS = {"modo:juego": ("steam", "steamwebhelper", "epicgameslauncher"),
+               "modo:trabajo": ("fusion360", "bambu-studio", "bambustudio", "kicad", "code", "arduino ide")}
+
+
+def nota_modo(app: str) -> tuple[str, int, str] | None:
+    a = (app or "").lower()
+    for clave, programas in SUGERENCIAS.items():
+        if a in programas:
+            modo = clave.split(":")[1]
+            return clave, 1, f"Acaba de abrir {app} y no hay ningún modo activo. Si le sirve, ofrécele activar el modo {modo}."
+    return None
+
+
 class Vigilante:
     def __init__(self):
         self.lecturas: dict[str, int] = {}   # cuántas lecturas seguidas lleva cada señal
@@ -136,6 +156,8 @@ class Vigilante:
         v = ventana_activa()
         if v.get("app") and v["app"] != self.foco["app"]:
             self.foco = {"app": v["app"], "desde": time.time()}
+            if sugerida := nota_modo(v["app"]):
+                notas.append(sugerida)
         from .rutinas import RUTINAS
 
         if v.get("app") and v.get("quieto", 1e9) < 120:  # solo cuenta si de verdad la está usando
@@ -158,7 +180,9 @@ class Vigilante:
         hoy = datetime.now().strftime("%Y-%m-%d")
         if self.estado.get("hoy") != hoy:
             self.estado.update(hoy=hoy, dichos_hoy=0)
-        if urgencia < 3 and (modo in ("juego", "noche") or ocupado or not presente or self.estado["dichos_hoy"] >= MAXIMO_DIA):
+        if clave.startswith("modo:") and modo:
+            return False
+        if urgencia < 3 and (modo in ("juego", "noche") or enfoque_activo() or ocupado or not presente or self.estado["dichos_hoy"] >= MAXIMO_DIA):
             return False
         if ahora - self.estado.get("ultimo", 0) < (ENTRE_URGENTES if urgencia >= 3 else ENTRE_COMENTARIOS):
             return False

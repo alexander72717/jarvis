@@ -231,6 +231,13 @@ Corren sin nadie presente: lo que pediría confirmación se deniega, y una tarea
 
 «¿En qué quedamos con el cohete?» devuelve decisiones, pendientes y notas de ese proyecto, desde cualquier pantalla. JARVIS las anota solo cuando se decide algo. «Programa mi cierre del día a las 9» te cuenta cada noche qué se hizo y qué sigue.
 
+## Atajos del PC
+
+- **Win+Shift+J:** selecciona un texto o un error en cualquier programa y JARVIS te lo explica en español.
+- **Win+Shift+K:** dicta, y lo que digas se escribe donde esté el cursor. Otra pulsación termina.
+- «¿Qué copié sobre el sensor?» busca en lo que copiaste. El historial vive solo en la RAM y no guarda lo que parece una contraseña.
+- «Modo enfoque 50 minutos» calla a JARVIS y las notificaciones de Windows, y te avisa al terminar.
+
 ## Copias de seguridad y registro
 
 Cada noche se guarda una copia de la memoria, los tableros, los modos, las tareas y las habilidades en `data/respaldos/` (las últimas 7, sin claves). El PC enlazado se trae también la del cerebro, así un disco dañado en el servidor no se lleva todo. Para restaurar, detén JARVIS y descomprime el `.zip` dentro de `data/`.
