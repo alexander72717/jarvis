@@ -1013,7 +1013,9 @@ def _foto(nombre: str) -> tuple[Path | None, str]:
     c = _clave(nombre)
     f = next((x for x in filas if c in x["clave"] or x["clave"] in c), None)
     if not f:
-        return None, f"No encuentro la impresora «{nombre}». Veo: {', '.join(x['nombre'] for x in filas) or 'ninguna'}."
+        if not filas:
+            return None, "La pestaña Multidispositivo de Bambu Studio está vacía: pulsa Añadir y elige tus impresoras (hasta 6)."
+        return None, f"No encuentro la impresora «{nombre}». Veo: {', '.join(x['nombre'] for x in filas)}."
     if f["fuera"]:
         return None, f"{f['nombre']} está fuera de línea."
     _detalle(f)
