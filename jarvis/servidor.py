@@ -252,10 +252,12 @@ async def anunciar_tarea(texto: str):
         await telegram.notificar(texto)
 
 
-async def completar_rapido(mensajes: list) -> str:
+async def completar_rapido(mensajes: list, nivel: str = "rapido", vision: bool = False) -> str:
+    """Los vigilantes del PC piensan en el cerebro si están enlazados: ahí están las llaves."""
     if ENLACE.conectado:
-        return (await ENLACE.pedir("POST", "/api/rapido", json={"mensajes": mensajes}, timeout=30))["texto"]
-    return await router.completar(mensajes, "rapido")
+        d = {"mensajes": mensajes, "nivel": nivel, "vision": vision}
+        return (await ENLACE.pedir("POST", "/api/rapido", json=d, timeout=120))["texto"]
+    return await router.completar(mensajes, nivel, vision)
 
 
 async def modo_actual() -> str | None:
@@ -299,6 +301,7 @@ async def vida(app):
     if config.ES_WINDOWS:
         from . import impresion3d, proactivo, vigilancias
 
+        impresion3d.VER = completar_rapido
         tareas.append(asyncio.create_task(impresion3d.vigilante(avisar_pantallas)))
         vigilancias.AVISAR = lambda texto: avisar_pantallas(texto, forzar=True)  # «avísame cuando…»
         tareas.append(asyncio.create_task(vigilancias.vigilar()))
@@ -745,7 +748,8 @@ async def bajar_respaldo():
 async def rapido(datos: dict = Body(...)):
     """Una respuesta corta del modelo rápido para los vigilantes del PC enlazado."""
     try:
-        return {"texto": await router.completar(datos.get("mensajes") or [], "rapido")}
+        nivel = "inteligente" if datos.get("nivel") == "inteligente" else "rapido"
+        return {"texto": await router.completar(datos.get("mensajes") or [], nivel, bool(datos.get("vision")))}
     except SinProveedores as e:
         return JSONResponse({"error": str(e)}, 503)
 

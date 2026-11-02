@@ -135,7 +135,7 @@ GRUPOS = [
     ({"preguntar_a_claude", "encargar_a_claude", "seguir_con_claude", "tareas_claude"}, ("claude", "complej", "programa", "código", "codigo",
                                                                                            "script", "función", "funcion", "error en", "bug", "refactor", "revisa el proyecto", "investiga a fondo")),
     ({"activar_modo", "salir_modo", "modos", "crear_modo", "abrir_juego"}, ("modo", "jugar", "juego", "trabajar", "a trabajar", "noche", "steam", "partida")),
-    ({"modelo_3d_abrir", "abrir_en_bambu", "impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d", "controlar_impresion_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina", "plato", "pieza", "relleno", "soporte", "pared", "pendiente", "pausa", "reanuda", "cancela", "cómo va", "como va", "progreso")),
+    ({"mirar_impresora", "crear_pieza", "modelo_3d_abrir", "abrir_en_bambu", "impresoras_3d", "impresion_3d_planear", "imprimir_3d", "estado_impresoras_3d", "controlar_impresion_3d"}, ("imprim", "impresora", "3d", "stl", "3mf", "bambu", "filamento", "ams", "lamina", "plato", "pieza", "relleno", "soporte", "pared", "pendiente", "pausa", "reanuda", "cancela", "cómo va", "como va", "progreso")),
     ({"mostrar_visual", "ocultar_visual", "estado_sistema"}, ("muéstr", "muestr", "enséñ", "ensén", "explícame", "explicame", "explica", "cómo funciona",
       "como funciona", "a fondo", "más a fondo", "mas a fondo", "diagrama", "gráfic", "grafic", "visual", "dibuj", "esquema", "lienzo",
       "cómo está el", "como esta el", "cómo va el", "como va el", "estado del", "rendimiento", "compar", "panel", "en pantalla")),
@@ -1056,4 +1056,4 @@ async def guardar_en_pc(ctx, archivo=None, carpeta="Descargas"):
 
 
 # herramientas que viven en su propio módulo (se registran al importarlas)
-from . import analisis, claude_code, enfoque, escritorio, habilidades, impresion3d, modos, notion, proyectos, registro, respaldo, tareas, vigilancias  # noqa: E402,F401
+from . import analisis, claude_code, enfoque, escritorio, habilidades, impresion3d, modos, notion, piezas, proyectos, registro, respaldo, tareas, vigilancias  # noqa: E402,F401

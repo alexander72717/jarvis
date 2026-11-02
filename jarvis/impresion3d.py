@@ -9,6 +9,7 @@ y Bambu Handy, el envío se hace manejando la ventana «Enviar trabajo de impres
 las impresoras de tu cuenta (en casa o fuera) con su estado y los colores del AMS. Mientras envía, mueve el ratón.
 """
 import asyncio
+import base64
 import ctypes
 import hashlib
 import json
@@ -797,6 +798,10 @@ async def _en_hilo(fn, *args):
 # error con código) sale de la pestaña Dispositivo al pulsar «Vista».
 REGISTRO_TRABAJOS = TRABAJOS / "trabajos.json"
 CADA = 180  # segundos entre revisiones
+CAMARA_CADA = 5  # cada cuántas revisiones se mira por la cámara (15 min)
+OSCURA = 12  # brillo medio (0-255) por debajo del cual no se distingue nada
+VER = None  # async fn(mensajes, nivel, vision): lo conecta el servidor; piensa el cerebro si el PC está enlazado
+BAMBU_CONF = Path(os.environ.get("APPDATA", "")) / "BambuStudio" / "BambuStudio.conf"
 ATASCADA = 15 * 60  # sin avanzar este tiempo = algo pasa (filamento, atasco…)
 MALOS = re.compile(r"fallo|error|pausa|detenid|cancelad|introduzca|inserte|atasc|obstru", re.I)
 
@@ -842,12 +847,29 @@ def _pestana(ven, nombre: str):
     time.sleep(2.5)
 
 
+def _activar_multidispositivo():
+    """Bambu Studio apaga a veces esta preferencia. Solo se reinicia si la única ventana abierta es la de JARVIS."""
+    if {x for x, _ in _ventanas()} - _mias():
+        raise RuntimeError("Falta la pestaña Multidispositivo de Bambu Studio y tienes una ventana tuya abierta: "
+                           "actívala en Preferencias → Administración de varios dispositivos.")
+    _cerrar_mia()
+    time.sleep(3)
+    texto = BAMBU_CONF.read_text(encoding="utf-8")
+    BAMBU_CONF.write_text(texto.replace('"enable_multi_machine": false', '"enable_multi_machine": true'), encoding="utf-8")
+    ESTADO["hwnd"] = None
+
+
 def _tabla() -> list[dict]:
     """Filas de la pestaña Multidispositivo: [{nombre, tarea, estado, y}]"""
     from . import ocr
 
     ven = _ventana_vigia()
-    _pestana(ven, "Multidispositivo")
+    try:
+        _pestana(ven, "Multidispositivo")
+    except RuntimeError:
+        _activar_multidispositivo()
+        ven = _ventana_vigia()
+        _pestana(ven, "Multidispositivo")
     r = ven.BoundingRectangle
     lineas = ocr.leer(_captura(r, ven))
     cab = {l["texto"].split(",")[-1].strip(): l["caja"] for l in lineas if "Nombre del dispositivo" in l["texto"] or
@@ -975,6 +997,85 @@ def _controlar(impresora: str, accion: str) -> str:
     return f"{fila['nombre'].split('(')[0].strip()} → {accion}: ahora está {estado}" +         (f" · tarea {nueva['tarea']}" if nueva["tarea"] and "ninguna" not in nueva["tarea"].lower() else "")
 
 
+def _reproduciendo(ven, r) -> bool:
+    from . import ocr
+
+    b = ven.BoundingRectangle
+    franja = _captura(ven.BoundingRectangle, ven).crop((r.left - b.left + 400, r.top - b.top, r.right - b.left, r.bottom - b.top))
+    return any("Reproduciendo" in l["texto"] for l in ocr.leer(franja))
+
+
+def _foto(nombre: str) -> tuple[Path | None, str]:
+    """Una foto de la cámara de una impresora, tomada del video de Bambu Studio. Solo mira: no le manda nada a la impresora."""
+    from PIL import ImageStat
+
+    filas = _tabla()
+    c = _clave(nombre)
+    f = next((x for x in filas if c in x["clave"] or x["clave"] in c), None)
+    if not f:
+        return None, f"No encuentro la impresora «{nombre}». Veo: {', '.join(x['nombre'] for x in filas) or 'ninguna'}."
+    if f["fuera"]:
+        return None, f"{f['nombre']} está fuera de línea."
+    _detalle(f)
+    ven = _ventana_vigia()
+    ctrl = next((x for x, _ in _recorrer(ven, 16) if (x.Name or "").strip() == "MediaPlayCtrl"), None)
+    if not ctrl:
+        return None, "Bambu Studio no muestra la cámara de esa impresora."
+    r = ctrl.BoundingRectangle
+    alto = round((r.right - r.left) * 9 / 16)
+    play = (r.left + 14, (r.top + r.bottom) // 2)
+    _clic(*play, ven)
+    try:
+        for _ in range(20):
+            time.sleep(3)
+            if _reproduciendo(ven, r):
+                break
+        else:
+            return None, "La cámara no arrancó (a veces tarda o la impresora la tiene apagada)."
+        time.sleep(2)
+        b = ven.BoundingRectangle
+        img = _captura(b, ven).crop((r.left - b.left, r.top - alto - b.top, r.right - b.left, r.top - b.top))
+    finally:
+        _clic(*play, ven)  # detiene el video: no se queda gastando la conexión
+    if ImageStat.Stat(img.convert("L")).mean[0] < OSCURA:
+        return None, "La cámara está a oscuras: con la luz de la impresora apagada no puedo ver la pieza."
+    salida = TRABAJOS / f"camara_{_clave(f['nombre'])[:30]}.jpg"
+    img.save(salida, quality=85)
+    return salida, f["nombre"]
+
+
+async def _juzgar(foto: Path) -> dict:
+    """La IA mira la foto. Siempre responde en un dict: si no pudo, sin fallo."""
+    datos = base64.b64encode(foto.read_bytes()).decode()
+    mensajes = [{"role": "user", "content": [
+        {"type": "text", "text": "Foto de la cámara de una impresora 3D. Busca fallos claros: espagueti de filamento, pieza despegada de la cama, "
+         "boquilla imprimiendo al aire. Responde SOLO JSON: {\"fallo\": true|false, \"confianza\": 0-1, \"veo\": \"una frase en español\"}"},
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{datos}"}}]}]
+    try:
+        crudo = await asyncio.wait_for(VER(mensajes, "rapido", True), 60)
+        return json.loads(re.search(r"\{.*\}", crudo, re.S).group(0))
+    except Exception as e:  # noqa: BLE001
+        log.warning("no pude analizar la foto: %s", e)
+        return {"fallo": False, "confianza": 0, "veo": "No pude analizar la foto."}
+
+
+async def _vigilar_camaras(avisar):
+    """Dos revisiones seguidas con fallo antes de avisar: una sombra no debe despertar a nadie. Nunca cancela sola."""
+    trabajos = _trabajos()
+    for t in trabajos:
+        if t.get("aviso_camara"):
+            continue
+        foto, _ = await _en_hilo(_foto, t["impresora"])
+        if not foto:
+            continue
+        r = await _juzgar(foto)
+        t["sospechas"] = t.get("sospechas", 0) + 1 if r.get("fallo") and float(r.get("confianza", 0)) >= 0.7 else 0
+        if t["sospechas"] >= 2:
+            t["aviso_camara"] = True
+            await avisar(f"⚠ La cámara de {t['impresora']} muestra un posible fallo: {r.get('veo')} No la toqué; revísala o dime si la cancelo.")
+    _guardar_trabajos(trabajos)
+
+
 def _revisar() -> tuple[list[str], str]:
     """Una revisión: devuelve (avisos nuevos, resumen). Avisa de errores y de impresiones terminadas."""
     filas = _tabla()
@@ -1020,8 +1121,10 @@ async def vigilante(avisar):
     """Tarea de fondo del PC: cada pocos minutos revisa las impresoras con trabajos de JARVIS."""
     if os.name != "nt":
         return
+    vuelta = 0
     while True:
         await asyncio.sleep(CADA)
+        vuelta += 1
         if not _trabajos() and not (ESTADO.get("plan") and any(not p.get("enviado") for p in ESTADO["plan"]["platos"])):
             continue
         try:
@@ -1032,6 +1135,11 @@ async def vigilante(avisar):
             continue
         for texto in avisos:
             await avisar(texto)
+        if vuelta % CAMARA_CADA == 0 and _trabajos():
+            try:
+                await _vigilar_camaras(avisar)
+            except Exception as e:  # noqa: BLE001
+                log.warning("cámaras: %s", e)
 
 
 # ───────────────────────── herramientas ─────────────────────────
@@ -1069,6 +1177,16 @@ AJUSTES = {
     "orientar": P("string", "si (por defecto) para que Bambu oriente cada pieza; no para dejarlas como en el diseño"),
     "archivo": P("string", "Ruta del modelo (solo si no es el último abierto)"),
 }
+
+
+@herramienta("mirar_impresora", "Mira por la cámara de una impresora 3D y dice cómo va la pieza. Solo mira: no pausa ni cancela nada.",
+             {"impresora": P("string", "Nombre de la impresora")}, ["impresora"], solo_pc=True, timeout=180)
+async def mirar_impresora(ctx, impresora):
+    foto, texto = await _en_hilo(_foto, impresora)
+    if not foto:
+        return texto
+    r = await _juzgar(foto)
+    return f"{texto}: {r.get('veo')}" + (" Parece un fallo; dime si la cancelo." if r.get("fallo") else "")
 
 
 @herramienta("modelo_3d_abrir", "Abre un modelo 3D (STL, 3MF, OBJ, STEP) para imprimir: lo busca en el PC, lo separa en piezas "
