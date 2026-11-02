@@ -22,7 +22,7 @@ GRACIA = 60  # minutos: si el cerebro estaba reiniciándose a la hora justa, igu
 LIMITE = 180  # segundos que puede tardar una tarea
 DIAS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
 RESUMEN = ("Haz mi resumen de la mañana como quien saluda a un amigo: el clima de hoy, mis recordatorios, lo pendiente de mis proyectos con "
-           "proyecto_ver y mis impresoras 3D si el PC está encendido. Solo lo que importe, máximo cuatro frases para oír, sin listas, "
+           "proyecto_ver. No toques las impresoras 3D ni Bambu Studio. Solo lo que importe, máximo cuatro frases para oír, sin listas, "
            "y termina preguntando por dónde quiero empezar.")
 CIERRE = ("Haz mi cierre del día: mira registro_de_acciones de hoy y proyecto_ver, y cuéntame en pocas frases qué se hizo hoy, "
           "qué quedó pendiente y qué sería lo primero de mañana. Si hoy no hubo actividad, dilo en una frase.")
