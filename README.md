@@ -227,6 +227,16 @@ Ideas del fork Maicol, adaptadas al cerebro en el servidor y sin sus permisos fl
 
 Corren sin nadie presente: lo que pediría confirmación se deniega, y una tarea no puede crear otras. En el servidor, define `TZ` en su `.env` (por ejemplo `TZ=America/Bogota`) o las horas saldrán corridas.
 
+## Memoria por proyecto y cierre del día
+
+«¿En qué quedamos con el cohete?» devuelve decisiones, pendientes y notas de ese proyecto, desde cualquier pantalla. JARVIS las anota solo cuando se decide algo. «Programa mi cierre del día a las 9» te cuenta cada noche qué se hizo y qué sigue.
+
+## Copias de seguridad y registro
+
+Cada noche se guarda una copia de la memoria, los tableros, los modos, las tareas y las habilidades en `data/respaldos/` (las últimas 7, sin claves). El PC enlazado se trae también la del cerebro, así un disco dañado en el servidor no se lleva todo. Para restaurar, detén JARVIS y descomprime el `.zip` dentro de `data/`.
+
+Pregunta «¿qué has hecho hoy?» para ver cada acción, desde dónde se pidió y si se autorizó.
+
 ## JARVIS para tus amigos
 
 Versión autónoma: no usa tus llaves ni se conecta a tu PC. Cada amigo puede poner sus llaves gratis

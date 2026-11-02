@@ -23,6 +23,8 @@ LIMITE = 180  # segundos que puede tardar una tarea
 DIAS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
 RESUMEN = ("Haz mi resumen de la mañana: la fecha, el clima de hoy, mis recordatorios pendientes, el estado de mis impresoras 3D "
            "si el PC está encendido, y una sola frase con lo más importante del día. Sin listas, para oírlo en voz alta.")
+CIERRE = ("Haz mi cierre del día: mira registro_de_acciones de hoy y proyecto_ver, y cuéntame en pocas frases qué se hizo hoy, "
+          "qué quedó pendiente y qué sería lo primero de mañana. Si hoy no hubo actividad, dilo en una frase.")
 ANUNCIAR = None  # async fn(texto): lo conecta el servidor (pantallas, celular y Telegram)
 
 
@@ -113,6 +115,17 @@ async def resumen_de_la_manana(ctx, hora="07:00", dias=None):
     if any(t["pedido"] == RESUMEN for t in _todas()):
         return "El resumen de la mañana ya está programado; para cambiarlo, cancélalo primero con tareas_programadas."
     return crear(RESUMEN, hora, dias)
+
+
+@herramienta("cierre_del_dia", "Programa el cierre diario: qué se hizo hoy, qué quedó pendiente y qué sigue mañana.",
+             {"hora": P("string", "Hora en formato HH:MM de 24 horas (por defecto 21:00)"),
+              "dias": P("string", "'todos' (por defecto), 'entre semana', 'fin de semana' o días concretos")})
+async def cierre_del_dia(ctx, hora="21:00", dias=None):
+    if _desde_tarea(ctx):
+        return "Una tarea programada no puede crear otras tareas."
+    if any(t["pedido"] == CIERRE for t in _todas()):
+        return "El cierre del día ya está programado; para cambiarlo, cancélalo primero con tareas_programadas."
+    return crear(CIERRE, hora, dias)
 
 
 @herramienta("tareas_programadas", "Muestra o cancela las tareas programadas.",

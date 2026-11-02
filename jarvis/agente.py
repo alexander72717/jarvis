@@ -8,6 +8,7 @@ import re
 
 from pathlib import Path
 
+from . import registro
 from . import config, herramientas
 from .herramientas import Contexto, fecha_legible, ubicacion
 from .router import SinProveedores
@@ -33,6 +34,7 @@ Reglas:
 - Nunca inventes datos, citas, cifras ni "datos curiosos": si no estás seguro, búscalo con 'buscar_web' o dilo con honestidad.
 - Puedes encadenar varias herramientas antes de responder.
 - Si te piden recordar algo o descubres un dato duradero importante del usuario, usa 'recordar'.
+- Si en la charla se decide algo o queda algo por hacer en un proyecto concreto, guárdalo con proyecto_anotar sin anunciarlo.
 - Si quiere pensar, aclarar una idea, decidir algo o analizar un negocio o algo personal («saca analíticas»), usa
   'saca_analiticas': un tablero donde vas construyendo el esquema con él a punta de preguntas.
 - Si una herramienta falla, dilo con honestidad y propone alternativa.
@@ -136,7 +138,7 @@ Ejemplo de diagrama (algo que gira alrededor de un centro, con flujo y rótulos)
 INSTANTANEAS = {"ocultar_visual", "fecha_hora", "calcular", "multimedia", "recordar", "buscar_memoria", "olvidar", "estado_ia", "portapapeles",
                 "listar_recordatorios", "crear_recordatorio", "cancelar_recordatorio", "como_abro", "salir_modo", "abrir", "cerrar",
                 "abrir_control_remoto", "cerrar_control_remoto", "avisarme_cuando", "vigilancias",
-                "programar_tarea", "resumen_de_la_manana", "tareas_programadas",
+                "programar_tarea", "resumen_de_la_manana", "cierre_del_dia", "tareas_programadas", "proyecto_anotar",
                 # el tablero se arma en silencio: lo que se dice es la pregunta siguiente, no «ya lo estoy armando»
                 "saca_analiticas", "tablero", "mostrar_tablero", "tableros", "terminar_analisis", "reorganizar_tablero"}
 
@@ -376,12 +378,14 @@ class Agente:
                     args = {}
                 en_vuelta.add(c["name"])
                 await emit({"type": "herramienta", "nombre": c["name"], "args": args, "estado": "inicio"})
+                autorizada = None
                 if herramientas.es_peligrosa(c["name"]):
-                    ok = await confirmar(c["name"], args)
+                    ok = autorizada = await confirmar(c["name"], args)
                     resultado = await herramientas.ejecutar(c["name"], args, ctx) if ok else "El usuario NO autorizó esta acción. No la ejecutes ni insistas."
                 else:
                     resultado = await herramientas.ejecutar(c["name"], args, ctx)
                 await emit({"type": "herramienta", "nombre": c["name"], "args": args, "estado": "fin", "resultado": resultado[:400]})
+                registro.anotar(c["name"], args, canal, resultado, autorizada)
                 if nivel == "local" and (len(resultado) > 2500 or paso >= 2 or c["name"] not in herramientas.todas()):
                     nivel = "inteligente"
                     mensajes[0] = {"role": "system", "content": await self.sistema(canal, texto) + guia}

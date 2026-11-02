@@ -257,6 +257,9 @@ async def vida(app):
         tareas.append(asyncio.create_task(tareas_programadas.vigilar(agente)))
         tareas.append(asyncio.create_task(modos.vigilante_noche(
             lambda: herramientas.Contexto(router=router, memoria=memoria, canal="auto", difundir=difundir))))
+    from . import respaldo
+
+    tareas.append(asyncio.create_task(respaldo.vigilar(ENLACE if ENLACE.activo else None)))
     if config.ES_WINDOWS:
         from . import impresion3d, proactivo, vigilancias
 
@@ -680,6 +683,15 @@ async def anunciar(datos: dict = Body(...)):
         if datos.get("push"):
             await avisar_celular(texto, forzar=bool(datos.get("forzar")))
     return {"ok": bool(texto), "pantallas": [PANTALLAS.get(w, "?") for w in clientes]}
+
+
+@app.get("/api/respaldo")
+async def bajar_respaldo():
+    """La última copia del cerebro, para que el PC enlazado guarde la suya (no incluye claves)."""
+    from . import respaldo
+
+    ultimo = respaldo.ultimo()
+    return FileResponse(ultimo, filename=ultimo.name) if ultimo else JSONResponse({"error": "todavía no hay copias"}, 404)
 
 
 @app.post("/api/rapido")
