@@ -8,7 +8,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from fastapi import Body, FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -792,6 +792,39 @@ async def rapido(datos: dict = Body(...)):
         return {"texto": await router.completar(datos.get("mensajes") or [], nivel, bool(datos.get("vision")))}
     except SinProveedores as e:
         return JSONResponse({"error": str(e)}, 503)
+
+
+# ---------- calendario: vive en el cerebro; el PC enlazado solo lo pasa ----------
+@app.get("/calendario")
+async def pagina_calendario():
+    return FileResponse(config.WEB / "calendario.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/calendario")
+async def ver_calendario(desde: str = ""):
+    if ENLACE.conectado:
+        return await ENLACE.pedir("GET", f"/api/calendario?desde={quote(desde)}")
+    from . import calendario
+
+    return calendario.semana(desde)
+
+
+@app.post("/api/calendario")
+async def editar_calendario(datos: dict = Body(...)):
+    if ENLACE.conectado:
+        return await ENLACE.pedir("POST", "/api/calendario", json=datos)
+    from . import calendario
+
+    accion, id_, fecha = datos.get("accion"), str(datos.get("id", "")), datos.get("fecha")
+    if accion == "agregar":
+        mensaje = calendario.agregar(str(datos.get("texto", "")), fecha, datos.get("hora") or None, datos.get("repetir") or None)
+    elif accion == "marcar":
+        mensaje = calendario.marcar(id_, fecha, bool(datos.get("hecha", True)))
+    elif accion == "quitar":
+        mensaje = calendario.quitar(id_, fecha)
+    else:
+        return JSONResponse({"error": "acción desconocida"}, 400)
+    return {"mensaje": mensaje}
 
 
 # ---------- tableros de análisis («saca analíticas»): viven en el cerebro; el PC enlazado solo los pasa ----------

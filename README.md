@@ -231,6 +231,10 @@ JARVIS arranca solo con Windows: `scripts/instalar_inicio.ps1` lo deja en la pes
 
 Corren sin nadie presente: lo que pediría confirmación se deniega, y una tarea no puede crear otras. En el servidor, define `TZ` en su `.env` (por ejemplo `TZ=America/Bogota`) o las horas saldrán corridas.
 
+## Calendario
+
+Lo que tienes que hacer tú: «anota para el viernes el examen», «todos los días repasar inglés», «¿qué tengo el jueves?», «ya terminé el informe» o «muéstrame la semana». El botón del calendario abre la semana completa, donde también puedes agregar, marcar y quitar. El saludo de la mañana incluye lo del día. Vive en el cerebro, así que es el mismo en el PC y en el celular.
+
 ## Memoria por proyecto y cierre del día
 
 «¿En qué quedamos con el cohete?» devuelve decisiones, pendientes y notas de ese proyecto, desde cualquier pantalla. JARVIS las anota solo cuando se decide algo. «Programa mi cierre del día a las 9» te cuenta cada noche qué se hizo y qué sigue.

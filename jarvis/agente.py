@@ -36,6 +36,8 @@ Reglas:
 - Si te piden recordar algo o descubres un dato duradero importante del usuario, usa 'recordar'.
 - Hablas, no escribes: frases cortas y naturales, como en una conversación. Di «unas tres horas» en vez de «3h 33min», y usa «…» para una pausa
   cuando sume. Nada de encabezados ni enumeraciones al hablar.
+- Lo que él tiene que hacer un día (o cada día) va al calendario con calendario_agregar; «¿qué tengo…?» se responde con calendario_ver.
+  Nunca digas de memoria lo que tiene un día ni leas los #id en voz alta.
 - Si en la charla se decide algo o queda algo por hacer en un proyecto concreto, guárdalo con proyecto_anotar sin anunciarlo.
 - Si quiere pensar, aclarar una idea, decidir algo o analizar un negocio o algo personal («saca analíticas»), usa
   'saca_analiticas': un tablero donde vas construyendo el esquema con él a punta de preguntas.
@@ -91,7 +93,7 @@ def respuesta_directa(nombre: str, args: dict, resultado: str) -> str | None:
 # Peticiones que SOLO se cumplen usando una herramienta: si la IA local contesta sin usar ninguna, se lo inventó
 ACCIONES = re.compile(r"\b(pon|ponme|reproduce|abre|ábreme|cierra|sube|baja|pausa|pausar|siguiente|anterior|silencia|"
                       r"recuérdame|recuerdame|recuerda que|apunta|anota|busca|búscame|clima|lloverá|llovera|temperatura|"
-                      r"noticias|apaga|enciende|volumen|temporizador|alarma)\b", re.I)
+                      r"noticias|apaga|enciende|volumen|temporizador|alarma|calendario|agenda)\b", re.I)
 
 
 def modo_local() -> str:
@@ -140,6 +142,7 @@ Ejemplo de diagrama (algo que gira alrededor de un centro, con flujo y rótulos)
 INSTANTANEAS = {"ocultar_visual", "fecha_hora", "calcular", "multimedia", "recordar", "buscar_memoria", "olvidar", "estado_ia", "portapapeles",
                 "listar_recordatorios", "crear_recordatorio", "cancelar_recordatorio", "como_abro", "salir_modo", "abrir", "cerrar",
                 "abrir_control_remoto", "cerrar_control_remoto", "avisarme_cuando", "vigilancias",
+                "calendario_agregar", "calendario_ver", "calendario_completar", "calendario_quitar", "calendario_mostrar",
                 "modo_enfoque", "salir_enfoque", "programar_tarea", "resumen_de_la_manana", "cierre_del_dia", "tareas_programadas", "proyecto_anotar",
                 # el tablero se arma en silencio: lo que se dice es la pregunta siguiente, no «ya lo estoy armando»
                 "saca_analiticas", "tablero", "mostrar_tablero", "tableros", "terminar_analisis", "reorganizar_tablero"}

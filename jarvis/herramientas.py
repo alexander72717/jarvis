@@ -107,6 +107,9 @@ NUCLEO = {"fecha_hora", "buscar_web", "calcular", "recordar", "buscar_memoria", 
 GRUPOS = [
     ({"proyecto_anotar", "proyecto_ver", "proyecto_resolver"}, ("proyecto", "en qué quedamos", "en que quedamos", "qué falta", "que falta",
       "pendiente", "decidimos", "cohete", "smurfit", "robot")),
+    ({"calendario_agregar", "calendario_ver", "calendario_completar", "calendario_quitar", "calendario_mostrar"},
+     ("calendario", "agenda", "semana", "qué tengo", "que tengo", "tengo que", "tengo un", "tengo una", "tarea", "lunes", "martes", "miércoles", "miercoles",
+      "jueves", "viernes", "sábado", "sabado", "domingo", "ya hice", "ya terminé", "ya termine", "para hoy", "para mañana", "pendiente")),
     ({"portapapeles_historial"}, ("copié", "copie", "portapapeles", "copiado")),
     ({"modo_enfoque", "salir_enfoque"}, ("enfoque", "concentrar", "concentrarme", "no me interrumpas", "pomodoro")),
     ({"uso_de_tokens"}, ("token", "cuota", "cuánto he gastado", "cuanto he gastado", "cuánto me queda", "cuanto me queda")),
@@ -130,7 +133,7 @@ GRUPOS = [
     ({"olvidar", "listar_recordatorios", "cancelar_recordatorio"}, ("olvida", "recordatorio", "pendiente", "cancela", "borra")),
     ({"servidor_estado", "servidor_comando", "servidor_encender"}, ("servidor", "casaos", "server", "docker", "contenedor", "enciende")),
     ({"protocolos", "ejecutar_protocolo", "crear_protocolo"}, ("protocolo", "modo ", "macro", "rutina")),
-    ({"notion_ver", "notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "calendario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
+    ({"notion_ver", "notion_buscar", "notion_leer", "notion_consultar", "notion_crear_nota"}, ("notion", "clase", "horario", "apunte", "base de datos", "mis tareas", "mis notas", "nota en")),
     ({"poner_musica", "mis_gustos_musicales", "multimedia"}, ("música", "musica", "canción", "cancion", "spotify", "pon algo", "ponme", "playlist", "lista de", "escuchar", "artista", "banda", "álbum", "album", "concentrarme", "relajarme", "gustos")),
     ({"preguntar_a_claude", "encargar_a_claude", "seguir_con_claude", "tareas_claude"}, ("claude", "complej", "programa", "código", "codigo",
                                                                                            "script", "función", "funcion", "error en", "bug", "refactor", "revisa el proyecto", "investiga a fondo")),
@@ -179,7 +182,7 @@ def relevantes(contexto: str, usadas: set | None = None) -> set:
 # La IA local (CPU) reutiliza lo ya procesado si el inicio de la petición es idéntico:
 # por eso recibe SIEMPRE esta misma lista, en este mismo orden. Lo demás va a las IAs potentes.
 LOCALES = ["fecha_hora", "clima", "buscar_web", "calcular", "recordar", "buscar_memoria", "crear_recordatorio",
-           "listar_recordatorios", "abrir", "poner_musica", "multimedia", "estado_sistema", "noticias", "wikipedia", "estado_ia"]
+           "listar_recordatorios", "calendario_agregar", "calendario_ver", "abrir", "poner_musica", "multimedia", "estado_sistema", "noticias", "wikipedia", "estado_ia"]
 
 
 def esquemas_locales() -> list:
@@ -1056,4 +1059,4 @@ async def guardar_en_pc(ctx, archivo=None, carpeta="Descargas"):
 
 
 # herramientas que viven en su propio módulo (se registran al importarlas)
-from . import analisis, claude_code, enfoque, escritorio, habilidades, impresion3d, modos, notion, piezas, proyectos, registro, respaldo, tareas, vigilancias  # noqa: E402,F401
+from . import analisis, calendario, claude_code, enfoque, escritorio, habilidades, impresion3d, modos, notion, piezas, proyectos, registro, respaldo, tareas, vigilancias  # noqa: E402,F401

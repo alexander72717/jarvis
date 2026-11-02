@@ -21,8 +21,8 @@ MAXIMO = 30
 GRACIA = 60  # minutos: si el cerebro estaba reiniciándose a la hora justa, igual se hace
 LIMITE = 180  # segundos que puede tardar una tarea
 DIAS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
-RESUMEN = ("Haz mi resumen de la mañana como quien saluda a un amigo: el clima de hoy, mis recordatorios, lo pendiente de mis proyectos con "
-           "proyecto_ver. No toques las impresoras 3D ni Bambu Studio. Solo lo que importe, máximo cuatro frases para oír, sin listas, "
+RESUMEN = ("Haz mi resumen de la mañana como quien saluda a un amigo: el clima de hoy, TODO lo que tengo hoy según calendario_ver, mis recordatorios y "
+           "lo pendiente de mis proyectos con proyecto_ver. No toques las impresoras 3D ni Bambu Studio. Solo lo que importe, máximo cuatro frases para oír, sin listas, "
            "y termina preguntando por dónde quiero empezar.")
 CIERRE = ("Haz mi cierre del día: mira registro_de_acciones de hoy y proyecto_ver, y cuéntame en pocas frases qué se hizo hoy, "
           "qué quedó pendiente y qué sería lo primero de mañana. Si hoy no hubo actividad, dilo en una frase.")
@@ -107,7 +107,7 @@ async def programar_tarea(ctx, pedido, hora, dias=None):
     return crear(pedido, hora, dias)
 
 
-@herramienta("resumen_de_la_manana", "Programa el resumen diario de la mañana: clima, recordatorios e impresoras, en voz y como aviso al celular.",
+@herramienta("resumen_de_la_manana", "Programa el resumen diario de la mañana: clima, calendario de hoy y recordatorios, en voz y como aviso al celular.",
              {"hora": P("string", "Hora en formato HH:MM de 24 horas (por defecto 07:00)"),
               "dias": P("string", "'todos' (por defecto), 'entre semana', 'fin de semana' o días concretos")})
 async def resumen_de_la_manana(ctx, hora="07:00", dias=None):

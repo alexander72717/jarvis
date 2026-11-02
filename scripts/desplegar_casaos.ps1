@@ -14,15 +14,18 @@ Write-Host "> Empaquetando JARVIS..."
 $tmp = Join-Path $env:TEMP "jarvis_despliegue.tar"
 if (Test-Path $tmp) { Remove-Item $tmp }
 tar -cf $tmp -C $raiz jarvis web requirements.txt Dockerfile docker-compose.yml .env.example
+if ($LASTEXITCODE -ne 0) { throw "No se pudo empaquetar. Corre esto desde PowerShell: el tar y el scp de Git Bash no entienden rutas C:\..." }
 # El .env del PC NO se sube: el cerebro tiene el suyo (clave propia, OLLAMA_URL del servidor).
 # La primera vez se crea desde .env.example; edítalo en el servidor o pásale tus llaves a mano.
 
 Write-Host "> Copiando a $destinoSsh..."
 ssh $destinoSsh "mkdir -p $Destino"
 scp $tmp "${destinoSsh}:$Destino/jarvis.tar"
+if ($LASTEXITCODE -ne 0) { throw "No se pudo copiar al servidor; allá no se tocó nada." }
 
 Write-Host "> Construyendo y levantando el contenedor..."
-$cmd = "cd $Destino && tar -xf jarvis.tar && rm jarvis.tar && [ -f .env ] || cp .env.example .env; " +
+# set -e: un paso fallido debe detener todo, nunca llegar a reemplazar el .env del servidor
+$cmd = "set -e; cd $Destino; tar -xf jarvis.tar; rm jarvis.tar; [ -f .env ] || cp .env.example .env; " +
        "sed -i 's/^JARVIS_HOST=.*/JARVIS_HOST=0.0.0.0/' .env; " +
        "(docker compose up -d --build || sudo docker compose up -d --build) && sleep 4 && (docker logs --tail 15 jarvis 2>/dev/null || sudo docker logs --tail 15 jarvis)"
 ssh -t $destinoSsh $cmd

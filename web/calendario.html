@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1016">
+<title>JARVIS · Calendario</title>
+<link rel="icon" href="/static/jarvis.png">
+<style>
+:root { --fondo: #0b1016; --dia: #12171d; --linea: rgba(255, 255, 255, .08); --texto: #eceff2; --tenue: #8a96a1; --acento: #7fd8e8; }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--fondo); color: var(--texto); font: 14px/1.35 Inter, "Segoe UI", system-ui, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
+.cab { display: flex; align-items: center; gap: 6px; padding: 14px 16px 10px; }
+.cab h1 { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 600; }
+.cab button { height: 32px; min-width: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--dia); }
+.cab button:hover { background: #1b222a; }
+.semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 0 16px 16px; align-items: start; }
+.dia { min-height: 180px; padding: 10px 8px; border-radius: 10px; background: var(--dia); border: 1px solid transparent; }
+.dia.hoy { border-color: var(--acento); }
+.dia-cab { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.dia-cab b { font-size: 18px; font-weight: 600; }
+.dia-cab span { flex: 1; color: var(--tenue); font-size: 12px; text-transform: capitalize; }
+.dia.hoy .dia-cab b { color: var(--acento); }
+.dia-cab button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--tenue); font-size: 17px; line-height: 1; }
+.dia-cab button:hover { background: rgba(255, 255, 255, .08); color: var(--texto); }
+.item { display: flex; align-items: flex-start; gap: 6px; padding: 5px 0; border-top: 1px solid var(--linea); overflow-wrap: anywhere; }
+.item input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--acento); }
+.item label { flex: 1; min-width: 0; cursor: pointer; }
+.item time { display: block; color: var(--acento); font-size: 12px; }
+.item small { color: var(--tenue); }
+.item.hecha label { color: var(--tenue); text-decoration: line-through; }
+.quitar { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--tenue); opacity: .55; }
+.quitar:hover, .quitar:focus-visible { opacity: 1; background: rgba(255, 255, 255, .08); }
+.serie { width: 100%; padding: 4px 0 6px; color: var(--tenue); font-size: 12px; }
+.serie button { margin: 4px 4px 0 0; padding: 3px 7px; border: 0; border-radius: 6px; background: #1f272f; }
+form { display: grid; gap: 5px; margin-bottom: 8px; }
+form input, form select { width: 100%; min-width: 0; padding: 6px 7px; border: 1px solid var(--linea); border-radius: 7px; background: var(--fondo); }
+form button { padding: 6px; border: 0; border-radius: 7px; background: var(--acento); color: #06202a; font-weight: 600; }
+.vacio { margin: 0; color: var(--tenue); font-size: 12px; }
+/* en el panel lateral y el celular no caben siete columnas */
+@media (max-width: 760px) {
+  .semana { grid-template-columns: 1fr; }
+  .dia { min-height: 0; }
+}
+</style>
+</head>
+<body>
+<header class="cab">
+  <h1 id="titulo" aria-live="polite">Calendario</h1>
+  <button id="antes" aria-label="Semana anterior" title="Semana anterior">‹</button>
+  <button id="ahora">Hoy</button>
+  <button id="despues" aria-label="Semana siguiente" title="Semana siguiente">›</button>
+</header>
+<main id="semana" class="semana"></main>
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const PARAMS = new URLSearchParams(location.search);
+let desde = PARAMS.get("desde") || "", ultima = "", abierto = null, serie = null;
+
+function crear(etiqueta, clase, texto) {
+  const e = document.createElement(etiqueta);
+  if (clase) e.className = clase;
+  if (texto !== undefined) e.textContent = texto;
+  return e;
+}
+
+async function enviar(datos) {
+  await fetch("/api/calendario", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(datos) });
+  await cargar();
+}
+
+function formulario(d) {
+  const f = crear("form");
+  const texto = crear("input");
+  texto.placeholder = "¿Qué hay que hacer?"; texto.maxLength = 200; texto.required = true; texto.setAttribute("aria-label", "Tarea");
+  const hora = crear("input");
+  hora.type = "time"; hora.setAttribute("aria-label", "Hora (opcional)");
+  const repetir = crear("select");
+  repetir.setAttribute("aria-label", "Repetir");
+  for (const [valor, nombre] of [["", "Solo este día"], ["todos", "Todos los días"], ["entre semana", "Entre semana"], [d.nombre, `Cada ${d.nombre}`]])
+    repetir.append(new Option(nombre, valor));
+  f.append(texto, hora, repetir, crear("button", "", "Agregar"));
+  f.onsubmit = (e) => {
+    e.preventDefault();
+    abierto = null;
+    enviar({ accion: "agregar", texto: texto.value, fecha: d.fecha, hora: hora.value, repetir: repetir.value });
+  };
+  setTimeout(() => texto.focus());
+  return f;
+}
+
+function fila(d, i) {
+  const clave = d.fecha + i.id;
+  if (serie === clave) {  // algo repetido: que se note si se quita un día o todos
+    const caja = crear("div", "serie", `Quitar «${i.texto}»:`);
+    const solo = crear("button", "", "Solo este día"), toda = crear("button", "", "Todos los días"), no = crear("button", "", "Cancelar");
+    solo.onclick = () => { serie = null; enviar({ accion: "quitar", id: i.id, fecha: d.fecha }); };
+    toda.onclick = () => { serie = null; enviar({ accion: "quitar", id: i.id }); };
+    no.onclick = () => { serie = null; pintar(); };
+    caja.append(crear("br"), solo, toda, no);
+    return caja;
+  }
+  const f = crear("div", "item" + (i.hecha ? " hecha" : ""));
+  const marca = crear("input"), nombre = crear("label"), quitar = crear("button", "quitar", "×");
+  marca.type = "checkbox"; marca.checked = i.hecha; marca.id = "m" + clave; nombre.htmlFor = marca.id;
+  marca.onchange = () => enviar({ accion: "marcar", id: i.id, fecha: d.fecha, hecha: marca.checked });
+  if (i.hora) nombre.append(crear("time", "", i.hora));
+  nombre.append(document.createTextNode(i.texto));
+  if (i.repite) { const r = crear("small", "", " ↻"); r.title = i.repite; nombre.append(r); }
+  quitar.setAttribute("aria-label", `Quitar ${i.texto}`);
+  quitar.onclick = () => {
+    if (i.repite) { serie = clave; pintar(); } else enviar({ accion: "quitar", id: i.id });
+  };
+  f.append(marca, nombre, quitar);
+  return f;
+}
+
+function pintar() {
+  const s = JSON.parse(ultima);
+  $("#titulo").textContent = s.titulo;
+  const caja = $("#semana");
+  caja.replaceChildren(...s.dias.map((d) => {
+    const dia = crear("section", "dia" + (d.fecha === s.hoy ? " hoy" : ""));
+    const cab = crear("div", "dia-cab"), mas = crear("button", "", "+");
+    mas.setAttribute("aria-label", `Agregar el ${d.nombre}`); mas.title = "Agregar";
+    mas.onclick = () => { abierto = abierto === d.fecha ? null : d.fecha; pintar(); };
+    cab.append(crear("b", "", d.numero), crear("span", "", d.nombre), mas);
+    dia.append(cab);
+    if (abierto === d.fecha) dia.append(formulario(d));
+    if (d.items.length) dia.append(...d.items.map((i) => fila(d, i)));
+    else if (abierto !== d.fecha) dia.append(crear("p", "vacio", "Libre"));
+    return dia;
+  }));
+}
+
+async function cargar() {
+  const r = await fetch(`/api/calendario?desde=${encodeURIComponent(desde)}`).catch(() => null);
+  if (!r || !r.ok) return;
+  const texto = await r.text();
+  if (texto === ultima) return;
+  const primera = !ultima;
+  ultima = texto;
+  pintar();
+  if (primera && innerWidth <= 760) { const hoy = $(".dia.hoy"); if (hoy) hoy.scrollIntoView({ block: "start" }); }
+}
+
+function saltar(semanas) {
+  const f = new Date(JSON.parse(ultima).desde + "T12:00");
+  f.setDate(f.getDate() + semanas * 7);
+  desde = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}-${String(f.getDate()).padStart(2, "0")}`;
+  abierto = serie = null;
+  cargar();
+}
+
+$("#antes").onclick = () => saltar(-1);
+$("#despues").onclick = () => saltar(1);
+$("#ahora").onclick = () => { desde = ""; abierto = serie = null; cargar(); };
+// lo que se anota por voz aparece solo; sin repintar mientras se escribe o se decide algo
+setInterval(() => { if (!document.hidden && abierto === null && serie === null) cargar(); }, 4000);
+cargar();
+</script>
+</body>
+</html>

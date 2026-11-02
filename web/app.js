@@ -12,6 +12,7 @@ const ICONOS = {
   mudo: '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6"/></svg>',
   panel: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>',
   mas: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  calendario: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   ajustes: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
 };
 
@@ -583,9 +584,17 @@ const plantillaLienzo = fetch("/static/lienzo.css").then((r) => r.text()).catch(
 
 // un tablero de análisis en el lienzo: es una página de JARVIS (se actualiza sola en vivo), no HTML de la IA
 function mostrarTablero(ev) {
-  const marco = $("#lienzo-tablero"), url = `/tablero?id=${encodeURIComponent(ev.id)}&incrustado=1`;
+  abrirPagina(`/tablero?id=${encodeURIComponent(ev.id)}&incrustado=1`, ev.titulo || "Análisis");
+}
+
+function mostrarCalendario(ev = {}) {
+  abrirPagina(`/calendario?incrustado=1&desde=${encodeURIComponent(ev.desde || "")}`, "Calendario");
+}
+
+function abrirPagina(url, titulo) {
+  const marco = $("#lienzo-tablero");
   if (marco.getAttribute("src") !== url) marco.setAttribute("src", url);
-  $("#lienzo-titulo").textContent = ev.titulo || "Análisis";
+  $("#lienzo-titulo").textContent = titulo;
   $("#lienzo-marco").classList.add("oculto");
   marco.classList.remove("oculto");
   document.body.classList.add("con-lienzo");
@@ -612,6 +621,7 @@ async function mostrarVisual(ev) {
 }
 
 function cerrarVisual() {
+  if (($("#lienzo-tablero").getAttribute("src") || "").startsWith("/calendario")) $("#lienzo-tablero").removeAttribute("src");  // deja de consultar la semana
   document.body.classList.remove("con-lienzo");
   $("#lienzo").setAttribute("aria-hidden", "true");
   if (LATERAL) avisarLienzo(0);
@@ -747,6 +757,9 @@ function manejar(ev) {
       return;
     case "dictar":  // Win+Shift+K: lo dicho se escribe en el programa activo
       dictar({ alFinal: (t) => { if (t) fetch("/api/escribir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: t }) }).catch(() => {}); } });
+      return;
+    case "calendario_mostrar":
+      mostrarCalendario(ev);
       return;
     case "tablero_mostrar": {
       mostrarTablero(ev);
@@ -1224,6 +1237,8 @@ function iniciarUI() {
   $("#subir").onchange = (e) => { subirArchivos([...e.target.files]); e.target.value = ""; };
   setTimeout(archivosCompartidos, 1500);
   $("#btn-config").innerHTML = ICONOS.ajustes;
+  $("#btn-calendario").innerHTML = ICONOS.calendario;
+  $("#btn-calendario").onclick = () => mostrarCalendario();
   $("#btn-panel").innerHTML = ICONOS.panel;
   $("#btn-nueva-sup").innerHTML = ICONOS.mas;
   $("#chk-hud").checked = S.hud;
