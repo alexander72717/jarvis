@@ -28,6 +28,9 @@ AVISAR = None  # async fn(texto): lo conecta el servidor al arrancar (todas las 
 TAREAS: dict[str, asyncio.Task] = {}
 LIMITE = 45 * 60  # una tarea no puede pasar de 45 min
 INSTRUCCIONES = ("Te llama JARVIS, el asistente por voz del usuario, para una tarea que pidió. Responde en español. "
+                 "Si resolviste algo que probablemente vuelva a pedir y se repite con un script, enséñaselo a JARVIS: guárdalo como habilidad en "
+                 f"«{config.DATOS / 'habilidades'}» (un .ps1 o .py con nombre_en_minusculas_con_guiones_bajos, cuya PRIMERA línea sea un comentario "
+                 "«# qué hace, en una frase», que reciba sus datos como argumentos y termine rápido) y dilo en tu respuesta. "
                  "Al final escribe una línea que empiece por «RESUMEN:» con 1-2 frases para leerle en voz alta.")
 
 

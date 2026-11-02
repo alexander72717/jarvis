@@ -105,6 +105,13 @@ def _corto(texto: str, maximo: int) -> str:
 # Mandar las 31 herramientas en cada petición cuesta ~2.400 tokens: se mandan solo las relevantes.
 NUCLEO = {"fecha_hora", "buscar_web", "calcular", "recordar", "buscar_memoria", "crear_recordatorio", "abrir", "cerrar", "estado_ia"}
 GRUPOS = [
+    ({"saca_analiticas", "tablero", "mostrar_tablero", "tableros", "terminar_analisis", "reorganizar_tablero", "borrar_analisis"},
+     ("analític", "analitic", "analiz", "tablero", "esquema", "aclar", "pensar", "pensamiento", "lluvia de ideas", "mapa mental",
+      "idea de negocio", "decidir", "decisión", "decision", "reabr", "retom", "proyecto", "organiza", "ordena", "enlist", "lista",
+      "borra", "bórra", "olvida", "elimina", "historial")),
+    ({"abrir_control_remoto", "cerrar_control_remoto"}, ("control remoto", "controlar el pc", "controlar el computador", "manejar el pc", "mouse remoto")),
+    ({"avisarme_cuando", "vigilancias"}, ("avís", "avis", "notifica", "cuando termine", "cuando acabe", "cuando se", "vigila", "pendiente de")),
+    ({"habilidades", "usar_habilidad"}, ("habilidad", "aprendiste", "lo de siempre", "como la otra vez")),
     ({"clima"}, ("clima", "tiempo hace", "llov", "lluvia", "temperatura", "calor", "frío", "frio", "pronóstico", "pronostico", "sol ")),
     ({"leer_web", "noticias", "wikipedia"}, ("noticia", "página", "pagina", "web", "http", "www", "wikipedia", "quién es", "quien es", "qué es", "que es", "lee ", "artículo", "articulo", "historia de")),
     ({"multimedia"}, ("volumen", "música", "musica", "canción", "cancion", "pausa", "siguiente", "anterior", "sube", "baja", "silencia", "reproduce")),
@@ -130,12 +137,33 @@ GRUPOS = [
 ]
 
 
+# Órdenes inconfundibles que no se dejan a criterio de la IA (ver Agente.atajo): frase -> (herramienta, argumentos)
+ATAJOS = [
+    (re.compile(r"\b(saca|s[aá]came|saquemos|sacar|abre|[aá]breme|abramos|abrir|activa|activemos|pon|ponme|modo)\b.{0,12}"
+                r"\banal[ií]tic|\bmodo\s+an[aá]lisis\b"
+                # «analicemos», «analicemos algo porfa»: sin tema, a abrir en blanco (con tema lo entiende la IA)
+                r"|^\W*(jarvis\W+)?(analicemos|analizemos|pensemos)(\s+(algo|un\s+rato|porfa|porf|por\s+favor|pues|ya|juntos))*\W*$"),
+     "saca_analiticas", {}),
+]
+
+
+def atajo(texto: str) -> tuple[str, dict] | None:
+    t = (texto or "").lower()
+    if len(t) > 80:  # una frase larga ya trae contenido: mejor que la IA la entienda completa
+        return None
+    return next(((nombre, dict(args)) for patron, nombre, args in ATAJOS if patron.search(t)), None)
+
+
 def relevantes(contexto: str, usadas: set | None = None) -> set:
     t = f" {contexto.lower()} "
     elegidas = set(NUCLEO) | (usadas or set())
     for nombres, palabras in GRUPOS:
         if any(p in t for p in palabras):
             elegidas |= nombres
+    from . import analisis
+
+    if analisis.activo():  # en pleno análisis sus respuestas no traen palabras clave: el tablero sigue a mano
+        elegidas |= analisis.HERRAMIENTAS_TABLERO
     return elegidas
 
 
@@ -818,12 +846,40 @@ async def estado_ia(ctx):
     return "\n".join(lineas)
 
 
-@herramienta("enviar_al_telefono", "Envía un mensaje al teléfono del usuario por Telegram.", {"mensaje": P("string", "Texto")}, ["mensaje"])
+@herramienta("enviar_al_telefono", "Manda YA un aviso al celular del usuario (le llega aunque tenga JARVIS cerrado). Para avisar más "
+             "tarde, cuando pase algo en el PC, usa avisarme_cuando.", {"mensaje": P("string", "Texto del aviso")}, ["mensaje"])
 async def enviar_al_telefono(ctx, mensaje):
-    if not ctx.notificar:
-        return "Telegram no está configurado."
-    ok = await ctx.notificar(mensaje)
-    return "Enviado al teléfono." if ok else "No se pudo enviar (revisa TELEGRAM_TOKEN y TELEGRAM_USUARIOS)."
+    from . import avisos_push
+
+    llego = []
+    if avisos_push.hay_suscritos() and await asyncio.to_thread(avisos_push.enviar, mensaje):
+        llego.append("notificación")
+    if ctx.notificar and await ctx.notificar(mensaje):
+        llego.append("Telegram")
+    if llego:
+        return f"Enviado al celular ({' y '.join(llego)})."
+    return "No le llegó: en el celular falta tocar ⚙ → «🔔 Avisos en este celular» una vez."
+
+
+@herramienta("abrir_control_remoto", "Abre en el celular un panel con la pantalla del PC en vivo para tocarla y controlar el mouse. Úsala cuando el usuario pida control remoto, mouse remoto o controlar el computador desde el celular.")
+async def abrir_control_remoto(ctx):
+    if not ctx.difundir:
+        return "No hay una pantalla conectada para abrir el control remoto."
+    from .nodos import REGISTRO
+    from . import control_remoto
+
+    if not (REGISTRO.hay_control() or control_remoto.activo()):
+        return "El control remoto está apagado: se prende con CONTROL_REMOTO=1 en el .env del PC. Díselo así."
+    await ctx.difundir({"type": "control_remoto", "abrir": True})
+    return ("Listo: en el celular quedó la pantalla del PC en vivo. Tocar = clic, mantener presionado = clic derecho, "
+            "arrastrar con un dedo = arrastrar, dos dedos = rueda, botón ⌨ = teclado. Dilo en una frase corta.")
+
+
+@herramienta("cerrar_control_remoto", "Cierra el panel de control remoto del celular.")
+async def cerrar_control_remoto(ctx):
+    if ctx.difundir:
+        await ctx.difundir({"type": "control_remoto", "abrir": False})
+    return "Control remoto cerrado."
 
 
 # ======================= archivos entre PC y celular =======================
@@ -968,4 +1024,4 @@ async def guardar_en_pc(ctx, archivo=None, carpeta="Descargas"):
 
 
 # herramientas que viven en su propio módulo (se registran al importarlas)
-from . import claude_code, impresion3d, modos, notion  # noqa: E402,F401
+from . import analisis, claude_code, habilidades, impresion3d, modos, notion, vigilancias  # noqa: E402,F401

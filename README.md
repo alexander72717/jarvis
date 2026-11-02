@@ -210,6 +210,17 @@ la nube y Bambu Handy, porque JARVIS lamina con la línea de comandos de Bambu S
 ventana «Enviar trabajo de impresión». Placa por defecto: PEI texturizada.
 Un solo color por plato; las casillas vacías o con un material incompatible se ignoran.
 
+## Analíticas, avisos, proactivo, habilidades y control remoto
+
+Ideas del fork Maicol, adaptadas al cerebro en el servidor y sin sus permisos flojos.
+
+- **«Saca analíticas»:** un tablero de tarjetas conectadas para pensar una idea en voz alta. JARVIS pregunta, anota y se ve en vivo en el panel de todas las pantallas. Se guarda en `data/tableros/` del cerebro.
+- **Avisos al celular:** ⚙ → «🔔 Avisos en este celular» activa notificaciones push aunque JARVIS esté cerrado. Requiere abrir el celular por HTTPS.
+- **«Avísame cuando…»:** vigila en el PC que un programa se cierre o se abra, que termine una descarga, que el PC se desocupe o que aparezca un archivo.
+- **Proactivo:** comenta lo que de verdad importa (disco lleno, app colgada, batería) y ofrece lo que sueles abrir a esa hora. Un comentario cada 25 min como mucho, nunca en modo juego o noche. `PROACTIVO=0` en el `.env` del PC lo apaga.
+- **Habilidades:** lo que Claude Code resuelve una vez queda como script en `data/habilidades/`. Cada ejecución pide confirmación.
+- **Control remoto:** pantalla del PC en vivo con ratón y teclado desde un celular emparejado. **Apagado por defecto:** se prende con `CONTROL_REMOTO=1` en el `.env` del PC, y las pantallas del PC avisan cuando alguien lo toma. La IA solo puede abrir el panel, no mover nada.
+
 ## JARVIS para tus amigos
 
 Versión autónoma: no usa tus llaves ni se conecta a tu PC. Cada amigo puede poner sus llaves gratis
@@ -223,6 +234,8 @@ Versión autónoma: no usa tus llaves ni se conecta a tu PC. Cada amigo puede po
   Falta compilar la APK, para lo cual se necesita JDK 17 y el SDK de Android.
 
 ## Seguridad
+
+- Una web abierta en tu navegador no puede hablarle a JARVIS: el núcleo revisa `Origin` y `Host`, también en los WebSocket.
 
 - Por defecto solo escucha en `127.0.0.1`. Si lo expones en la red, exige clave.
 - Las llaves viven solo en `.env` (excluido de git). La API nunca las devuelve completas.

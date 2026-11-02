@@ -72,6 +72,13 @@ class Memoria:
                         (sesion, limite)).fetchall()[::-1]
         return [{"rol": f["rol"], "texto": f["contenido"], "meta": json.loads(f["meta"]) if f["meta"] else None, "ts": f["ts"]} for f in filas]
 
+    def borrar_entre(self, sesion, ratos: list[tuple[float, float]]) -> int:
+        """Borra de la conversación lo dicho en esos ratos (un análisis que pidió olvidar). Devuelve cuántos."""
+        total = 0
+        for desde, hasta in ratos:
+            total += self._q("DELETE FROM mensajes WHERE sesion=? AND ts BETWEEN ? AND ?", (sesion, desde, hasta), commit=True).rowcount
+        return total
+
     def borrar_sesion(self, sesion):
         self._q("DELETE FROM mensajes WHERE sesion=?", (sesion,), commit=True)
 

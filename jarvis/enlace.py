@@ -55,7 +55,7 @@ class Enlace:
         while True:
             try:
                 async with websockets.connect(url_ws("/nodo"), additional_headers=cabeceras(), max_size=None, ping_interval=20, open_timeout=10) as ws:
-                    await ws.send(json.dumps({"type": "registro", "nombre": nombre, "herramientas": herramientas.para_nodo()}, ensure_ascii=False))
+                    await ws.send(json.dumps({"type": "registro", "nombre": nombre, "herramientas": herramientas.para_nodo(), "control": self._control_activo()}, ensure_ascii=False))
                     self.conectado, espera = True, 3
                     log.info("conectado al cerebro %s como nodo «%s»", hub(), nombre)
                     ctx = Contexto(router=router, memoria=memoria, canal="nodo", sesion="nodo")
@@ -63,6 +63,8 @@ class Enlace:
                         m = json.loads(crudo)
                         if m.get("type") == "ejecutar":
                             asyncio.create_task(self._ejecutar(ws, ctx, m))
+                        elif m.get("type") == "control":
+                            asyncio.create_task(self._control(ws, m))
             except (OSError, websockets.WebSocketException, asyncio.TimeoutError) as e:
                 if self.conectado:
                     log.warning("se perdió el cerebro (%s); funciono en local mientras vuelve", e)
@@ -70,6 +72,26 @@ class Enlace:
                 self.conectado = False
             await asyncio.sleep(espera)
             espera = min(espera * 2, 60)
+
+    @staticmethod
+    def _control_activo() -> bool:
+        if not config.ES_WINDOWS:
+            return False
+        from . import control_remoto
+
+        return control_remoto.activo()
+
+    async def _control(self, ws, m):
+        from . import control_remoto
+
+        try:
+            r = await asyncio.to_thread(control_remoto.atender, m.get("m") or {})
+        except Exception as e:  # noqa: BLE001 - un gesto raro no corta el control
+            r = {"error": str(e)}
+        try:
+            await ws.send(json.dumps({"type": "resultado", "id": m.get("id"), "resultado": json.dumps(r)}))
+        except websockets.WebSocketException:
+            pass
 
     async def _ejecutar(self, ws, ctx, m):
         log.info("el cerebro pide: %s %s", m.get("nombre"), m.get("args"))
@@ -97,6 +119,14 @@ class Enlace:
                 while True:
                     crudo = await ws_ui.receive_text()
                     await ws_hub.send(crudo)
+                    try:
+                        m = json.loads(crudo)
+                    except ValueError:
+                        continue
+                    if m.get("type") == "mensaje":
+                        from . import proactivo
+
+                        proactivo.charlo(m.get("texto", ""))
 
             tareas = [asyncio.create_task(hacia_ui()), asyncio.create_task(hacia_hub())]
             try:

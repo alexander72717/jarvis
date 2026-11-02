@@ -9,6 +9,10 @@ pillow>=10.4
 ddgs>=9.0
 python-dotenv>=1.0
 qrcode[pil]>=7.4
+# avisos al celular aunque JARVIS esté cerrado (notificaciones push)
+pywebpush>=2.0
+# control remoto del PC (apagado por defecto)
+pyautogui>=0.9.54; sys_platform == "win32"
 # control del audio de Windows (pausar y silenciar mientras JARVIS habla)
 pycaw>=20240316; sys_platform == "win32"
 winrt-runtime>=3.0; sys_platform == "win32"

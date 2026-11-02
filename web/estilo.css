@@ -559,7 +559,7 @@ body.con-lienzo .lienzo { transform: none; visibility: visible; transition: tran
 .lienzo-punto { width: 7px; height: 7px; border-radius: 50%; background: var(--cian); box-shadow: 0 0 10px var(--cian); animation: latido 1.6s infinite; }
 .lienzo-cab button { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: #8fa9b8; font-size: 14px; }
 .lienzo-cab button:hover { background: rgba(255, 255, 255, .07); color: #fff; }
-#lienzo-marco { flex: 1; width: 100%; border: 0; background: #040a12; }
+#lienzo-marco, #lienzo-tablero { flex: 1; width: 100%; border: 0; background: #040a12; }
 .chip.visual { cursor: pointer; color: #7fdcef !important; }
 .chip.visual:hover { text-decoration: underline; }
 
@@ -577,3 +577,88 @@ body.lateral.lateral.lado-izquierda.con-lienzo > .barra-inf { margin-left: 14px;
 /* el modo limpio centra la rejilla con margin auto: con el lienzo abierto va pegada a su lado */
 body.lateral.lateral.con-lienzo > .rejilla { margin: 0 0 0 auto; }
 body.lateral.lateral.lado-izquierda.con-lienzo > .rejilla { margin: 0 auto 0 0; }
+
+.control-remoto { position: fixed; inset: 0; z-index: 60; background: #000; display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.control-remoto.oculto { display: none; }
+.control-barra { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #050c15; border-bottom: 1px solid rgba(0, 229, 255, .15); }
+.control-barra b { flex: 1; font: 600 11px "Inter", sans-serif; letter-spacing: .25em; color: #9fdcea; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.control-punto { width: 7px; height: 7px; border-radius: 50%; background: #ff4d5e; box-shadow: 0 0 8px #ff4d5e; animation: latido 1.4s infinite; }
+.control-barra button, .control-teclas button { min-width: 42px; height: 40px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 10px;
+  background: rgba(255, 255, 255, .05); color: #dcefff; font: 600 14px "Inter", sans-serif; padding: 0 10px; }
+.control-barra button.salir { background: rgba(255, 77, 94, .14); border-color: rgba(255, 77, 94, .45); color: #ffb3bb; }
+.control-barra button.activo, .control-teclas button.activo { background: rgba(0, 229, 255, .25); border-color: #00e5ff; }
+.control-zona { flex: 1; min-height: 0; position: relative; overflow: hidden; touch-action: none; display: grid; place-items: center; }
+.control-zona.touchpad { cursor: none; }
+#control-imagen { display: block; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transform-origin: 0 0; }
+.control-ayuda { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: max-content; max-width: 94%;
+  background: rgba(5, 12, 21, .92); border: 1px solid rgba(0, 229, 255, .25); border-radius: 12px; padding: 9px 13px; text-align: center;
+  font: 12.5px/1.55 "Inter", sans-serif; color: #b6cbd8; pointer-events: none; transition: opacity .6s; }
+.control-ayuda.fuera { opacity: 0; }
+.control-voz { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); width: max-content; max-width: 92%; max-height: 40%; overflow: hidden;
+  background: rgba(4, 22, 38, .94); border: 1px solid rgba(0, 229, 255, .45); border-radius: 16px; padding: 10px 14px;
+  font: 15px/1.45 "Inter", sans-serif; color: #e6f6ff; pointer-events: none; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); animation: entrar .25s ease; }
+.control-voz.oculto { display: none; }
+/* escribir en el PC: caja visible para ver (y corregir) lo que escribes */
+.control-escribir { background: #07121e; border-top: 1px solid rgba(0, 229, 255, .3); padding: 8px 8px 6px; display: flex; flex-direction: column; gap: 6px; }
+.control-escribir.oculto { display: none; }
+.control-remoto.escribiendo .control-dock, .control-remoto.escribiendo .control-teclas { display: none; }
+.ce-cab { display: flex; align-items: center; gap: 6px; }
+.ce-cab button, .ce-teclas button { height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .05); color: #dcefff; font: 600 13px "Inter", sans-serif; white-space: nowrap; }
+.ce-cab button.activo { background: rgba(0, 229, 255, .2); border-color: #00e5ff; color: #fff; }
+.ce-nota { flex: 1; min-width: 0; font: 11.5px "Inter", sans-serif; color: #6f8a99; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ce-cab .ce-listo { background: rgba(61, 255, 168, .14); border-color: rgba(61, 255, 168, .45); color: #bfffe2; }
+.ce-fila { display: flex; gap: 6px; align-items: flex-end; }
+#control-texto { flex: 1; min-width: 0; min-height: 44px; max-height: 110px; resize: none; border-radius: 14px; border: 1px solid rgba(0, 229, 255, .35);
+  background: #0b1a28; color: #fff; font: 17px/1.35 "Inter", sans-serif; padding: 11px 13px; outline: 0; }
+#control-texto:focus { border-color: #00e5ff; box-shadow: 0 0 0 3px rgba(0, 229, 255, .12); }
+.ce-enviar { height: 44px; padding: 0 16px; border-radius: 14px; border: 0; background: #00e5ff; color: #001018; font: 700 15px "Inter", sans-serif; }
+.ce-enviar.oculto, .ce-enter.oculto { display: none; }
+.ce-teclas { display: flex; gap: 6px; overflow-x: auto; align-items: center; scrollbar-width: none; }
+.ce-teclas::-webkit-scrollbar { display: none; }
+.ce-enter { display: flex; align-items: center; gap: 5px; font: 600 12.5px "Inter", sans-serif; color: #9fb6c4; white-space: nowrap; padding-right: 4px; }
+.ce-enter input { width: 18px; height: 18px; accent-color: #00e5ff; }
+.control-toque { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 2px solid #00e5ff;
+  pointer-events: none; animation: toque .45s ease-out forwards; }
+.control-toque.derecho { border-color: #ffb547; }
+@keyframes toque { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.3); opacity: 0; } }
+
+/* teclas y atajos: se abren encima del dock, con scroll si no caben */
+.control-teclas { max-height: 42vh; overflow-y: auto; padding: 8px; background: #050c15; border-top: 1px solid rgba(0, 229, 255, .15);
+  display: flex; flex-direction: column; gap: 8px; }
+.control-teclas.oculto { display: none; }
+.control-teclas .grupo { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.control-teclas .grupo span { width: 100%; font: 600 10px "Inter", sans-serif; letter-spacing: .2em; text-transform: uppercase; color: #5f8698; }
+.control-teclas .flechas { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: 44px 44px; justify-content: center; gap: 6px; }
+.control-teclas .flechas button { height: 100%; font-size: 18px; }
+.control-teclas .flechas [data-t=arriba] { grid-column: 2; }
+.control-teclas .flechas [data-t=izquierda] { grid-column: 1; grid-row: 2; }
+.control-teclas .flechas [data-t=abajo] { grid-column: 2; grid-row: 2; }
+.control-teclas .flechas [data-t=derecha] { grid-column: 3; grid-row: 2; }
+
+/* dock de abajo: botones grandes para el pulgar */
+.control-dock { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  background: #050c15; border-top: 1px solid rgba(0, 229, 255, .15); }
+.control-dock button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 58px;
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 14px; background: rgba(255, 255, 255, .05); color: #dcefff; padding: 0; }
+.control-dock button i { font-style: normal; font-size: 20px; line-height: 1; }
+.control-dock button span { font: 600 11px "Inter", sans-serif; letter-spacing: .02em; }
+.control-dock button.activo { background: rgba(61, 255, 168, .18); border-color: #3dffa8; animation: latido 1s infinite; }
+.control-dock button.jarvis { border-color: rgba(0, 229, 255, .5); background: rgba(0, 229, 255, .12); }
+.control-dock button.jarvis i { color: #00e5ff; }
+/* acostado: el dock pasa a la derecha y la pantalla del PC gana todo el alto */
+@media (orientation: landscape) and (max-height: 520px) {
+  .control-remoto { display: grid; grid-template-columns: 1fr 74px; grid-template-rows: auto 1fr auto; }
+  .control-remoto.oculto { display: none; }
+  .control-barra { grid-column: 1 / 3; padding: 3px 8px; }
+  .control-barra button { height: 32px; }
+  .control-zona { grid-column: 1; grid-row: 2 / 4; }
+  .control-teclas { grid-column: 1; grid-row: 3; max-height: 55vh; z-index: 2; }
+  .control-dock { grid-column: 2; grid-row: 2 / 4; grid-template-columns: 1fr; grid-auto-rows: 1fr; border-top: 0; border-left: 1px solid rgba(0, 229, 255, .15);
+    padding: 6px calc(6px + env(safe-area-inset-right)) 6px 6px; }
+  .control-dock button { height: auto; }
+  .control-escribir { grid-column: 1 / 3; grid-row: 3; }
+  .control-remoto.escribiendo .control-zona { grid-row: 2; grid-column: 1 / 3; }
+}
+.control-remoto:fullscreen { padding: 0; }

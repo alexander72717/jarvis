@@ -33,6 +33,8 @@ Reglas:
 - Nunca inventes datos, citas, cifras ni "datos curiosos": si no estás seguro, búscalo con 'buscar_web' o dilo con honestidad.
 - Puedes encadenar varias herramientas antes de responder.
 - Si te piden recordar algo o descubres un dato duradero importante del usuario, usa 'recordar'.
+- Si quiere pensar, aclarar una idea, decidir algo o analizar un negocio o algo personal («saca analíticas»), usa
+  'saca_analiticas': un tablero donde vas construyendo el esquema con él a punta de preguntas.
 - Si una herramienta falla, dilo con honestidad y propone alternativa.
 - Las acciones peligrosas piden confirmación al usuario automáticamente: no pidas permiso tú mismo, solo llámalas.
 - Para cerrar programas usa 'cerrar' (como darle a la X), nunca taskkill ni Stop-Process, que matan sin guardar.
@@ -132,7 +134,10 @@ Ejemplo de diagrama (algo que gira alrededor de un centro, con flujo y rótulos)
 
 # Acciones instantáneas: la respuesta llega enseguida, no hace falta avisar «ya estoy en eso»
 INSTANTANEAS = {"ocultar_visual", "fecha_hora", "calcular", "multimedia", "recordar", "buscar_memoria", "olvidar", "estado_ia", "portapapeles",
-                "listar_recordatorios", "crear_recordatorio", "cancelar_recordatorio", "como_abro", "salir_modo", "abrir", "cerrar"}
+                "listar_recordatorios", "crear_recordatorio", "cancelar_recordatorio", "como_abro", "salir_modo", "abrir", "cerrar",
+                "abrir_control_remoto", "cerrar_control_remoto", "avisarme_cuando", "vigilancias",
+                # el tablero se arma en silencio: lo que se dice es la pregunta siguiente, no «ya lo estoy armando»
+                "saca_analiticas", "tablero", "mostrar_tablero", "tableros", "terminar_analisis", "reorganizar_tablero"}
 
 
 def escritorio() -> str:
@@ -171,9 +176,9 @@ class Agente:
                 vistos.add(h["id"])
                 lista.append(f"- (#{h['id']}) {h['texto']}")
         memorias = ("\nLo que sabes del usuario (memoria a largo plazo):\n" + "\n".join(lista[:18])) if lista else ""
-        from . import modos
+        from . import analisis, modos
 
-        memorias += modos.instruccion()
+        memorias += modos.instruccion() + analisis.instruccion()
         trato = config.tratamiento()
         nombre_u = config.usuario() or "tu usuario"
         if compacto:
@@ -234,6 +239,24 @@ class Agente:
         except Exception:  # noqa: BLE001
             self._calentado = 0
 
+    async def atajo(self, texto: str, ctx, emit, sesion: str, mensajes: list):
+        """Órdenes inconfundibles («saca analíticas») se ejecutan antes de preguntarle a la IA: las gratis a veces
+        contestan «listo, señor» sin usar la herramienta. La IA recibe el resultado como si ella la hubiera llamado."""
+        hallado = herramientas.atajo(texto)
+        if not hallado:
+            return
+        nombre, args = hallado
+        await emit({"type": "herramienta", "nombre": nombre, "args": args, "estado": "inicio"})
+        resultado = await herramientas.ejecutar(nombre, args, ctx)
+        await emit({"type": "herramienta", "nombre": nombre, "args": args, "estado": "fin", "resultado": resultado[:400]})
+        ident = "".join(random.choices("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", k=9))  # Mistral exige 9
+        m_asist = {"role": "assistant", "content": "",
+                   "tool_calls": [{"id": ident, "type": "function", "function": {"name": nombre, "arguments": json.dumps(args, ensure_ascii=False)}}]}
+        m_tool = {"role": "tool", "tool_call_id": ident, "content": resultado}
+        for m in (m_asist, m_tool):
+            mensajes.append(m)
+            self.memoria.guardar_mensaje(sesion, m)
+
     async def responder(self, sesion: str, texto: str, emit, confirmar, canal="web", imagenes=None) -> str:
         """Procesa un mensaje. `emit(evento)` recibe el streaming; `confirmar(desc)` -> bool para acciones peligrosas."""
         contenido = texto
@@ -266,7 +289,11 @@ class Agente:
             for c in m.get("tool_calls") or []:
                 if c["function"]["name"] == "mostrar_visual" and len(c["function"].get("arguments") or "") > 300:
                     c["function"]["arguments"] = json.dumps({"titulo": "(visual ya mostrado)", "html": "…"}, ensure_ascii=False)
-        ctx = Contexto(router=self.router, memoria=self.memoria, canal=canal, sesion=sesion, difundir=self.difundir, notificar=self.notificar)
+                elif c["function"]["name"] == "tablero" and len(c["function"].get("arguments") or "") > 300:
+                    # el tablero actual ya viaja resumido en las instrucciones (modo análisis)
+                    c["function"]["arguments"] = json.dumps({"acciones": "(ya aplicadas)"}, ensure_ascii=False)
+        ctx = Contexto(router=self.router, memoria=self.memoria, canal=canal, sesion=sesion, difundir=self.difundir, notificar=self.notificar,
+                       extra={"mensaje": texto})  # lo que dijo en ESTE mensaje
         # herramientas relevantes para lo que se habla (incluye las usadas en los últimos turnos)
         usadas = {c["function"]["name"] for m in historial[-8:] for c in (m.get("tool_calls") or [])}
         previo = next((m["content"] for m in reversed(historial[:-1]) if m["role"] == "assistant" and isinstance(m.get("content"), str)), "")
@@ -275,7 +302,16 @@ class Agente:
         guia = GUIA_VISUAL if any(e["function"]["name"] == "mostrar_visual" for e in esquemas_potentes) else ""
         if guia and nivel != "local":
             mensajes[0] = {**mensajes[0], "content": mensajes[0]["content"] + guia}
-        final, meta = "", {}
+        from . import analisis
+
+        if analisis.activo() and nivel != "local":
+            # lo último de las instrucciones es lo que más respetan: corto y construyendo, no interrogando
+            nota = "\n(Modo análisis: responde en 2 a 4 frases, máximo unas 60 palabras, sin listas ni markdown."
+            if previo.rstrip().endswith("?"):  # dos preguntas seguidas ya se sienten como formulario
+                nota += " Tu respuesta anterior ya terminó en pregunta: esta vez NO preguntes; aporta, propone o construye."
+            mensajes[0] = {**mensajes[0], "content": mensajes[0]["content"] + nota + ")"}
+        await self.atajo(texto, ctx, emit, sesion, mensajes)
+        final, meta, en_vuelta = "", {}, set()
 
         for paso in range(10):
             fin = None
@@ -337,6 +373,7 @@ class Agente:
                     args = {}
                 if not isinstance(args, dict):
                     args = {}
+                en_vuelta.add(c["name"])
                 await emit({"type": "herramienta", "nombre": c["name"], "args": args, "estado": "inicio"})
                 if herramientas.es_peligrosa(c["name"]):
                     ok = await confirmar(c["name"], args)
@@ -370,6 +407,11 @@ class Agente:
             final = "He encadenado demasiadas acciones seguidas; me detengo aquí por seguridad."
             await emit({"type": "token", "text": final})
 
+        # el escriba pasa la vuelta al tablero, salvo órdenes sobre el tablero mismo («organízalo», «reabre el de…»)
+        if analisis.activo() and final.strip() and not herramientas.atajo(texto) and not en_vuelta & analisis.ORDENES_TABLERO:
+            asyncio.create_task(analisis.escribir(self.router, texto, final))
+            if "mostrar_visual" not in en_vuelta:  # si ya sacó un visual, ese es la pizarra de esta vuelta
+                asyncio.create_task(analisis.pizarra(self.router, texto, final))
         await emit({"type": "fin", "meta": meta, "texto": final})
         if self.memoria.contar_usuario(sesion) % 4 == 0:
             asyncio.create_task(self.aprender_cuando_libre(sesion))

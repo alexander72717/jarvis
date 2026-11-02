@@ -70,6 +70,30 @@ _cambio_router = asyncio.Event()
 router.oyentes.append(lambda: _cambio_router.set())
 
 
+def _usando_el_pc() -> bool:
+    """¿Está frente a este PC? (tocó teclado o ratón en los últimos 5 min)."""
+    if not config.ES_WINDOWS:
+        return False
+    from . import proactivo
+
+    try:
+        return proactivo.ventana_activa().get("quieto", 1e9) < 300
+    except Exception:  # noqa: BLE001
+        return False
+
+
+async def avisar_celular(texto: str, titulo: str = "JARVIS", forzar: bool = False):
+    """Notificación al celular aunque JARVIS esté cerrado allá. Sin forzar, no si el celular lo tiene abierto (ya lo oyó)."""
+    from . import avisos_push
+
+    if not avisos_push.hay_suscritos() or (not forzar and "celular" in PANTALLAS.values()):
+        return
+    try:
+        await asyncio.to_thread(avisos_push.enviar, texto, titulo)
+    except Exception as e:  # noqa: BLE001
+        log.warning("no pude mandar el aviso al celular: %s", e)
+
+
 async def tarea_metricas():
     previo, t_previo = None, 0.0
     while True:
@@ -148,22 +172,59 @@ async def tarea_recordatorios():
             memoria.completar_recordatorio(r["id"])
             texto = f"Recordatorio: {r['texto']}"
             await difundir({"type": "recordatorio", "texto": texto})
+            await avisar_celular(r["texto"], "⏰ Recordatorio")
             if telegram.activo:
                 await telegram.notificar("⏰ " + texto)
         await asyncio.sleep(3)
 
 
-async def avisar_pantallas(texto: str):
-    """Avisos de fondo (impresoras 3D, Claude Code…): en todas las pantallas (vía el cerebro si el PC está enlazado) y en Telegram."""
+async def avisar_pantallas(texto: str, forzar: bool = False):
+    """Avisos de fondo (impresoras 3D, Claude Code…): en todas las pantallas (vía el cerebro si el PC está enlazado), en Telegram
+    y como notificación al celular si no está frente al PC. forzar: al celular siempre (lo pidió así o es urgente)."""
+    push = forzar or not await asyncio.to_thread(_usando_el_pc)
     try:
         if ENLACE.activo:
-            await ENLACE.pedir("POST", "/api/anunciar", json={"texto": texto})
+            await ENLACE.pedir("POST", "/api/anunciar", json={"texto": texto, "push": push, "forzar": forzar})
         else:
             await difundir({"type": "anuncio", "texto": texto})
+            if push:
+                await avisar_celular(texto, forzar=forzar)
     except Exception as e:  # noqa: BLE001
         log.warning("no pude anunciar «%s»: %s", texto, e)
     if telegram.activo:
         await telegram.notificar(texto)
+
+
+async def a_las_pantallas_del_pc(texto: str):
+    datos = json.dumps({"type": "anuncio", "texto": texto, "proactivo": True}, ensure_ascii=False)
+    for ws in [w for w in list(clientes) if PANTALLAS.get(w) != "celular"]:
+        try:
+            await ws.send_text(datos)
+        except Exception:  # noqa: BLE001
+            clientes.discard(ws)
+
+
+async def decir_proactivo(frase: str):
+    """Lo que JARVIS dice por iniciativa propia: solo en las pantallas del PC. Queda en la conversación: así «sí, hágale» tiene contexto."""
+    if ENLACE.conectado:
+        await ENLACE.pedir("POST", "/api/anunciar", json={"texto": frase, "solo_pc": True})
+        return
+    memoria.guardar_mensaje(SESION_WEB, {"role": "assistant", "content": frase})
+    await a_las_pantallas_del_pc(frase)
+
+
+async def completar_rapido(mensajes: list) -> str:
+    if ENLACE.conectado:
+        return (await ENLACE.pedir("POST", "/api/rapido", json={"mensajes": mensajes}, timeout=30))["texto"]
+    return await router.completar(mensajes, "rapido")
+
+
+async def modo_actual() -> str | None:
+    if ENLACE.conectado:
+        return (await ENLACE.pedir("GET", "/api/estado")).get("modo")
+    from . import modos
+
+    return (modos.activo() or {}).get("nombre")
 
 
 @asynccontextmanager
@@ -177,15 +238,24 @@ async def vida(app):
     from . import claude_code
 
     claude_code.AVISAR = avisar_pantallas
+    from . import analisis
+
+    analisis.DIFUNDIR = difundir
     if not ENLACE.activo:  # el modo noche automático lo lleva quien conversa: el cerebro, o el PC si va solo
         from . import modos
 
         tareas.append(asyncio.create_task(modos.vigilante_noche(
             lambda: herramientas.Contexto(router=router, memoria=memoria, canal="auto", difundir=difundir))))
     if config.ES_WINDOWS:
-        from . import impresion3d
+        from . import impresion3d, proactivo, vigilancias
 
         tareas.append(asyncio.create_task(impresion3d.vigilante(avisar_pantallas)))
+        vigilancias.AVISAR = lambda texto: avisar_pantallas(texto, forzar=True)  # «avísame cuando…»
+        tareas.append(asyncio.create_task(vigilancias.vigilar()))
+        if config.env("PROACTIVO", "1") != "0":
+            tareas.append(asyncio.create_task(proactivo.vigilar(
+                completar_rapido, modo_actual, decir_proactivo, lambda: any(PANTALLAS.get(w) != "celular" for w in clientes),
+                lambda frase: avisar_pantallas(frase, forzar=True))))
     if telegram.activo:
         tareas.append(asyncio.create_task(telegram.bucle()))
     log.info("JARVIS listo en http://%s:%s", config.HOST, config.PUERTO)
@@ -307,6 +377,12 @@ async def estado():
     return datos
 
 
+def _modo() -> str | None:
+    from . import modos
+
+    return (modos.activo() or {}).get("nombre")
+
+
 def _estado_local(hora):
     return {
         "nombre": config.nombre_asistente(), "usuario": config.usuario(), "tratamiento": config.tratamiento(),
@@ -315,6 +391,7 @@ def _estado_local(hora):
         "recordatorios": memoria.recordatorios(), "pc": config.ES_WINDOWS, "version": VERSION_WEB,
         "ia_local": {"modo": config.env("IA_LOCAL_MODO", "auto"), "disponible": router.hay_local(), "cuotas_bajas": router.cuotas_bajas()},
         "nodos": REGISTRO.estado(), "cerebro": "este equipo", "pantallas": sorted(PANTALLAS.values()),
+        "modo": _modo(), "control": REGISTRO.hay_control(),
     }
 
 
@@ -367,7 +444,7 @@ async def recargar():
     return router.estado()
 
 
-EXTRA_EDITABLES = {"CLOUDFLARE_ACCOUNT_ID", "OLLAMA_URL", "TELEGRAM_TOKEN", "TELEGRAM_USUARIOS", "USUARIO_NOMBRE", "USUARIO_TRATAMIENTO",
+EXTRA_EDITABLES = {"CONTROL_REMOTO", "PROACTIVO", "CLOUDFLARE_ACCOUNT_ID", "OLLAMA_URL", "TELEGRAM_TOKEN", "TELEGRAM_USUARIOS", "USUARIO_NOMBRE", "USUARIO_TRATAMIENTO",
                    "CIUDAD", "PAIS", "VOZ", "VOZ_TONO", "NOTION_TOKEN", "SPOTIFY_CLIENT_ID", "IA_LOCAL_MODO", "SERVIDOR_HOST", "SERVIDOR_USUARIO", "SERVIDOR_MAC", "JARVIS_NOMBRE"}
 
 
@@ -571,9 +648,101 @@ async def compartir(request: Request):
 async def anunciar(datos: dict = Body(...)):
     """JARVIS dice algo en TODAS las pantallas conectadas (PC y celular)."""
     texto = str(datos.get("texto", "")).strip()[:600]
-    if texto:
+    if texto and datos.get("solo_pc"):
+        memoria.guardar_mensaje(SESION_WEB, {"role": "assistant", "content": texto})
+        await a_las_pantallas_del_pc(texto)
+    elif texto:
         await difundir({"type": "anuncio", "texto": texto})
+        if datos.get("push"):
+            await avisar_celular(texto, forzar=bool(datos.get("forzar")))
     return {"ok": bool(texto), "pantallas": [PANTALLAS.get(w, "?") for w in clientes]}
+
+
+@app.post("/api/rapido")
+async def rapido(datos: dict = Body(...)):
+    """Una respuesta corta del modelo rápido para los vigilantes del PC enlazado."""
+    try:
+        return {"texto": await router.completar(datos.get("mensajes") or [], "rapido")}
+    except SinProveedores as e:
+        return JSONResponse({"error": str(e)}, 503)
+
+
+# ---------- tableros de análisis («saca analíticas»): viven en el cerebro; el PC enlazado solo los pasa ----------
+@app.get("/tablero")
+async def pagina_tablero():
+    return FileResponse(config.WEB / "tablero.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/tableros")
+async def lista_tableros():
+    if ENLACE.conectado:
+        return await ENLACE.pedir("GET", "/api/tableros")
+    from . import analisis
+
+    return [{"id": t["id"], "titulo": t["titulo"], "tarjetas": len(t["nodos"]), "actualizado": t.get("actualizado")}
+            for t in analisis.todos()]
+
+
+@app.get("/api/tableros/{ident}")
+async def ver_tablero(ident: str):
+    if ENLACE.conectado:
+        return await ENLACE.pedir("GET", f"/api/tableros/{ident}")
+    from . import analisis
+
+    t = analisis.leer(ident)
+    return t if t else JSONResponse({"error": "no existe"}, 404)
+
+
+@app.post("/api/tableros/{ident}")
+async def editar_tablero(ident: str, datos: dict = Body(...)):
+    """Lo que se cambia a mano en el tablero (mover, editar, borrar): todas las pantallas lo ven."""
+    if ENLACE.conectado:
+        return await ENLACE.pedir("POST", f"/api/tableros/{ident}", json=datos)
+    from . import analisis
+
+    t = analisis.leer(ident)
+    if not t:
+        return JSONResponse({"error": "no existe"}, 404)
+    if datos.get("accion") == "mover":
+        n = next((x for x in t["nodos"] if x["id"] == datos.get("id")), None)
+        if n:
+            n["x"], n["y"] = round(float(datos.get("x", n["x"]))), round(float(datos.get("y", n["y"])))
+    elif datos.get("accion") == "activar":  # cambió de proyecto en el tablero
+        cambio = (analisis.activo() or {}).get("id") != t["id"]
+        analisis.activar(t)
+        if cambio:  # queda en la conversación: así JARVIS sigue con este y no con el de antes
+            aviso = f"Listo: pasamos al proyecto «{t['titulo']}»."
+            memoria.guardar_mensaje(SESION_WEB, {"role": "assistant", "content": aviso})
+            await difundir({"type": "externo", "rol": "assistant", "texto": aviso, "dispositivo": "tablero"})
+    elif datos.get("accion") in ("cambiar", "borrar", "crear", "conectar", "titular", "agregar", "marcar", "mover_a"):
+        analisis.aplicar(t, [datos])
+    analisis.guardar(t)
+    await analisis.avisar(t)
+    return {"ok": True}
+
+
+# ---------- avisos al celular aunque JARVIS esté cerrado ----------
+@app.get("/api/push/clave")
+async def push_clave():
+    from . import avisos_push
+
+    try:
+        return {"clave": await asyncio.to_thread(avisos_push.clave_publica)}
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"No pude preparar los avisos: {e}"}, 500)
+
+
+@app.post("/api/push/suscribir")
+async def push_suscribir(request: Request, datos: dict = Body(...)):
+    from . import avisos_push
+
+    try:
+        n = avisos_push.suscribir(datos.get("sub") or {}, request.headers.get("user-agent", "dispositivo"))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, 400)
+    enviadas = await asyncio.to_thread(avisos_push.enviar, "Listo: desde ahora le aviso aquí lo importante aunque no tenga JARVIS abierto.",
+                                       "🔔 Avisos activados")
+    return {"ok": True, "dispositivos": n, "prueba": enviadas}
 
 
 @app.get("/api/qr_celular")
@@ -619,11 +788,79 @@ async def ws_nodo(ws: WebSocket):
     try:
         registro = json.loads(await ws.receive_text())
         await difundir({"type": "nodo", "nombre": registro.get("nombre"), "conectado": True})
-        await REGISTRO.atender(ws, registro.get("nombre") or "PC", registro.get("herramientas") or [])
+        await REGISTRO.atender(ws, registro.get("nombre") or "PC", registro.get("herramientas") or [], bool(registro.get("control")))
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
     finally:
         await difundir({"type": "nodo", "nombre": registro.get("nombre") if "registro" in locals() else None, "conectado": False})
+
+
+async def _control(m: dict) -> dict:
+    if config.ES_WINDOWS:
+        from . import control_remoto
+
+        return await asyncio.to_thread(control_remoto.atender, m)
+    return await REGISTRO.control(m)
+
+
+def _control_prendido() -> bool:
+    if not config.ES_WINDOWS:
+        return REGISTRO.hay_control()
+    from . import control_remoto
+
+    return control_remoto.activo()
+
+
+@app.websocket("/ws/control")
+async def ws_control(ws: WebSocket):
+    """Pantalla en vivo y ratón/teclado del PC para un dispositivo emparejado. El celular pide cada cuadro cuando
+    terminó de mostrar el anterior; los gestos se atienden aparte, al instante."""
+    if not _ws_permitido(ws) or not _control_prendido():
+        await ws.close(code=4401)
+        return
+    await ws.accept()
+    # nadie controla el PC a escondidas: las pantallas del PC lo dicen
+    await difundir({"type": "control_aviso", "activo": True, "texto": "Un dispositivo emparejado tomó el control del PC."})
+    pedido = asyncio.Event()
+    calidad = {"calidad": 55, "nitidez": "normal"}
+
+    async def enviar_cuadros():
+        import base64
+
+        ultimo = None
+        while True:
+            await pedido.wait()
+            pedido.clear()
+            for _ in range(10):  # si la pantalla no cambió, espera un poco antes de volver a mirar
+                r = await _control({"t": "cuadro", "previa": ultimo, **calidad})
+                if not r.get("igual"):
+                    break
+                await asyncio.sleep(0.15)
+            if r.get("error"):
+                await ws.close(code=4401)
+                return
+            if r.get("igual"):
+                continue
+            ultimo = r["huella"]
+            await ws.send_text(json.dumps({"t": "cursor", "x": r["x"], "y": r["y"]}))  # con zoom, la vista sigue al cursor
+            await ws.send_bytes(base64.b64decode(r["jpg"]))
+
+    tarea = asyncio.create_task(enviar_cuadros())
+    try:
+        while True:
+            m = json.loads(await ws.receive_text())
+            if m.get("t") == "cuadro":
+                calidad.update(calidad=int(m.get("calidad", calidad["calidad"])), nitidez="hd" if m.get("nitidez") == "hd" else "normal")
+                pedido.set()
+            else:
+                r = await _control(m)
+                if r.get("error"):
+                    log.warning("control remoto: %s", r["error"])
+    except (WebSocketDisconnect, RuntimeError, ValueError):
+        pass
+    finally:
+        tarea.cancel()
+        await difundir({"type": "control_aviso", "activo": False, "texto": "Control remoto terminado."})
 
 
 @app.websocket("/ws")
@@ -686,6 +923,9 @@ async def ws_conversacion(ws: WebSocket):
                 if tarea and not tarea.done():
                     tarea.cancel()
                 tarea = asyncio.create_task(atender(m["texto"].strip(), dispositivo, m.get("imagenes")))
+                from . import proactivo
+
+                proactivo.charlo(m["texto"])
             elif t == "confirmar":
                 fut = pendientes.get(m.get("id"))
                 if fut and not fut.done():

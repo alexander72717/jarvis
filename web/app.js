@@ -525,11 +525,25 @@ function ponerMeta(d, m) {
 const ANCHO_LIENZO_LATERAL = 640;  // en el panel lateral la ventana se ensancha esto hacia el centro de la pantalla
 const plantillaLienzo = fetch("/static/lienzo.css").then((r) => r.text()).catch(() => "");
 
+// un tablero de análisis en el lienzo: es una página de JARVIS (se actualiza sola en vivo), no HTML de la IA
+function mostrarTablero(ev) {
+  const marco = $("#lienzo-tablero"), url = `/tablero?id=${encodeURIComponent(ev.id)}&incrustado=1`;
+  if (marco.getAttribute("src") !== url) marco.setAttribute("src", url);
+  $("#lienzo-titulo").textContent = ev.titulo || "Análisis";
+  $("#lienzo-marco").classList.add("oculto");
+  marco.classList.remove("oculto");
+  document.body.classList.add("con-lienzo");
+  $("#lienzo").setAttribute("aria-hidden", "false");
+  if (LATERAL) avisarLienzo(ANCHO_LIENZO_LATERAL);
+}
+
 async function mostrarVisual(ev) {
   if (ev.cerrar) return cerrarVisual();
   const css = await plantillaLienzo;
   $("#lienzo-titulo").textContent = ev.titulo || "";
   // sin red ni acceso a la página: solo pinta lo que trae
+  $("#lienzo-tablero").classList.add("oculto");
+  $("#lienzo-marco").classList.remove("oculto");
   $("#lienzo-marco").srcdoc = '<!doctype html><html lang="es"><head><meta charset="utf-8">' +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; font-src data:">` +
     `<style>${css}</style></head><body>` +
@@ -664,6 +678,20 @@ function manejar(ev) {
     case "modo":
       document.body.dataset.modo = ev.nombre || "";
       aviso("MODO", ev.nombre ? `Modo ${ev.nombre}${ev.tarea ? " · " + ev.tarea : ""} activado` : "Modo desactivado");
+      return;
+    case "tablero_mostrar": {
+      mostrarTablero(ev);
+      const c = chip("◈ " + (ev.titulo || "Análisis") + " · ver", "visual");
+      c.onclick = () => mostrarTablero(ev);
+      return;
+    }
+    case "control_remoto":
+      if (ev.abrir) abrirControl(); else cerrarControl();
+      return;
+    case "control_aviso":
+      if (ES_REMOTO) return;  // es para las pantallas del PC
+      aviso("CONTROL REMOTO", ev.texto, ev.activo);
+      if (ev.activo) decir(ev.texto);
       return;
     case "visual":
       mostrarVisual(ev);
@@ -1278,3 +1306,459 @@ arrancar();
 $("#lienzo-cerrar").onclick = cerrarVisual;
 addEventListener("keydown", (e) => { if (e.key === "Escape" && document.body.classList.contains("con-lienzo")) cerrarVisual(); });
 if (LATERAL) avisarLienzo(0);  // al (re)cargar el panel, sin lienzo abierto
+
+/* ---- control remoto: la pantalla del PC en vivo en el celular ----
+   Dos formas de manejarla: touchpad (deslizas y el cursor se mueve, como en un portátil: preciso aunque la
+   pantalla se vea pequeña) o toque directo (tocas donde quieres hacer clic). En las dos: pellizcar = zoom. */
+const ES_REMOTO = !["127.0.0.1", "localhost", "::1"].includes(location.hostname);
+const RC = {
+  ws: null, url: null, derecho: false, zoom: 1, foco: [0.5, 0.5], cursor: [0.5, 0.5],
+  touchpad: guardado("touchpad", true), hd: guardado("controlHd", false),
+  dedos: new Map(), gesto: null, ultimoToque: 0, ultimoMov: 0, pend: [0, 0], envio: null, despierto: null, vozT: null,
+};
+const AYUDA_CONTROL = {
+  touchpad: "Desliza: mover el cursor · Toca: clic · Doble toque: doble clic<br>Toca y desliza enseguida: arrastrar · Mantén o toca con 2 dedos: clic derecho<br>2 dedos: rueda · Pellizca: zoom (la vista sigue al cursor)",
+  directo: "Toca donde quieras hacer clic · Mantén: clic derecho · Arrastra: arrastrar<br>2 dedos: rueda (con zoom: mover la vista) · Pellizca: zoom",
+};
+const limitar = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+
+function abrirControl() {
+  if (!ES_REMOTO) { aviso("CONTROL REMOTO", "Esto se usa desde el celular: pídeselo a JARVIS desde allá."); return; }
+  if (RC.ws) return;
+  $("#control-remoto").classList.remove("oculto");
+  pintarControl(); mostrarAyudaControl();
+  // la pantalla del celular no se apaga mientras manejas el PC
+  navigator.wakeLock?.request("screen").then((w) => { RC.despierto = w; }).catch(() => {});
+  const ws = RC.ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/control");
+  ws.binaryType = "blob";
+  const pedir = () => {
+    if (ws.readyState !== 1) return;
+    const ahorro = navigator.connection?.saveData;
+    ws.send(JSON.stringify({ t: "cuadro", calidad: ahorro ? 35 : RC.hd ? 70 : 55, nitidez: RC.hd && !ahorro ? "hd" : "normal" }));
+  };
+  ws.onopen = pedir;
+  ws.onmessage = (e) => {
+    if (typeof e.data === "string") {
+      const m = JSON.parse(e.data);
+      if (m.t === "cursor" && !RC.pend[0] && !RC.pend[1]) RC.cursor = [m.x, m.y];
+      return;
+    }
+    const anterior = RC.url;
+    RC.url = URL.createObjectURL(e.data);
+    const img = $("#control-imagen");
+    img.onload = () => { if (anterior) URL.revokeObjectURL(anterior); ajustarControl(); pedir(); };  // el siguiente, recién mostrado este
+    img.src = RC.url;
+  };
+  ws.onclose = () => { if (RC.ws === ws) { RC.ws = null; soltarDespierto(); $("#control-remoto").classList.add("oculto"); aviso("CONTROL REMOTO", "Desconectado del PC"); } };
+}
+
+function cerrarControl() {
+  const ws = RC.ws; RC.ws = null;
+  if (ws) ws.close();
+  soltarDespierto();
+  $("#control-remoto").classList.add("oculto");
+  alternarEscribir(false);
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+}
+function soltarDespierto() { RC.despierto?.release?.().catch(() => {}); RC.despierto = null; }
+
+function mostrarAyudaControl() {
+  const a = $("#control-ayuda");
+  a.innerHTML = AYUDA_CONTROL[RC.touchpad ? "touchpad" : "directo"];
+  a.classList.remove("fuera");
+  clearTimeout(mostrarAyudaControl.t);
+  mostrarAyudaControl.t = setTimeout(() => a.classList.add("fuera"), 6000);
+}
+
+function pintarControl() {
+  const modo = $("[data-c=modo]");
+  modo.querySelector("i").textContent = RC.touchpad ? "🖱" : "👆";
+  modo.querySelector("span").textContent = RC.touchpad ? "Touchpad" : "Directo";
+  $("[data-c=hd]").classList.toggle("activo", RC.hd);
+  $("#control-zona").classList.toggle("touchpad", RC.touchpad);
+}
+
+// la imagen se dibuja a la medida exacta que cabe (sin bordes): así cada toque cae justo en su punto del PC
+function ajustarControl() {
+  const img = $("#control-imagen"), zona = $("#control-zona");
+  if (!img.naturalWidth) return;
+  const k = Math.min(zona.clientWidth / img.naturalWidth, zona.clientHeight / img.naturalHeight);
+  img.style.width = Math.floor(img.naturalWidth * k) + "px";
+  img.style.height = Math.floor(img.naturalHeight * k) + "px";
+  const z = RC.zoom;
+  if (z <= 1.02) { RC.zoom = 1; img.style.transform = "none"; return; }
+  if (RC.touchpad) {  // en touchpad la vista acompaña al cursor: nunca se sale del cuadro
+    const m = 0.36 / z;
+    for (const i of [0, 1]) {
+      if (RC.cursor[i] < RC.foco[i] - m) RC.foco[i] = RC.cursor[i] + m;
+      if (RC.cursor[i] > RC.foco[i] + m) RC.foco[i] = RC.cursor[i] - m;
+    }
+  }
+  RC.foco = RC.foco.map((f) => limitar(f, 0.5 / z, 1 - 0.5 / z));
+  const [fx, fy] = RC.foco;
+  img.style.transform = `translate(${img.offsetWidth * (0.5 - fx * z)}px, ${img.offsetHeight * (0.5 - fy * z)}px) scale(${z})`;
+}
+addEventListener("resize", () => { if (RC.ws) setTimeout(ajustarControl, 60); });
+
+function puntoPC(x, y) {  // coordenadas de la pantalla del celular -> 0..1 de la pantalla del PC
+  const r = $("#control-imagen").getBoundingClientRect();
+  return [limitar((x - r.left) / r.width), limitar((y - r.top) / r.height)];
+}
+function mandarControl(m) { if (RC.ws && RC.ws.readyState === 1) RC.ws.send(JSON.stringify(m)); }
+function marcarToque(x, y, derecho) {
+  const z = $("#control-zona"), r = z.getBoundingClientRect(), d = document.createElement("div");
+  d.className = "control-toque" + (derecho ? " derecho" : ""); d.style.left = x - r.left + "px"; d.style.top = y - r.top + "px";
+  z.appendChild(d); setTimeout(() => d.remove(), 500);
+}
+
+// touchpad: los movimientos se juntan y salen cada 25 ms (con aceleración: lento = preciso, rápido = cruza la pantalla)
+function moverRelativo(dx, dy, dt) {
+  const r = $("#control-imagen").getBoundingClientRect();
+  if (!r.width) return;
+  const rapidez = Math.hypot(dx, dy) / Math.max(dt, 8);
+  const k = 1.3 * (1 + Math.min(2.2, rapidez * 1.4));
+  RC.pend[0] += (dx / r.width) * k; RC.pend[1] += (dy / r.height) * k;
+  if (!RC.envio) RC.envio = setTimeout(vaciarMovimiento, 25);
+}
+function vaciarMovimiento() {
+  clearTimeout(RC.envio); RC.envio = null;
+  const [dx, dy] = RC.pend; RC.pend = [0, 0];
+  if (!dx && !dy) return;
+  mandarControl({ t: "rel", dx, dy });
+  RC.cursor = [limitar(RC.cursor[0] + dx), limitar(RC.cursor[1] + dy)];  // el PC lo confirma con el próximo cuadro
+  if (RC.zoom > 1) ajustarControl();
+}
+function clicTouchpad(boton = "izquierdo", donde) {
+  vaciarMovimiento();
+  mandarControl({ t: "clic", boton });
+  const r = $("#control-imagen").getBoundingClientRect();
+  marcarToque(donde ? donde[0] : r.left + RC.cursor[0] * r.width, donde ? donde[1] : r.top + RC.cursor[1] * r.height, boton === "derecho");
+  navigator.vibrate?.(boton === "derecho" ? 30 : 8);
+}
+
+(() => {
+  const zona = $("#control-zona");
+  const centro = () => { const p = [...RC.dedos.values()]; return [(p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2]; };
+  const distancia = () => { const p = [...RC.dedos.values()]; return Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]); };
+
+  zona.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    try { zona.setPointerCapture(e.pointerId); } catch { /* algunos navegadores no capturan el segundo dedo */ }
+    RC.dedos.set(e.pointerId, [e.clientX, e.clientY]);
+    if (RC.dedos.size === 2) {  // segundo dedo: rueda, zoom o clic derecho (si venía arrastrando, primero suelta)
+      const g = RC.gesto;
+      clearTimeout(g?.largo);
+      if (g?.tipo === "arrastre") { vaciarMovimiento(); mandarControl(RC.touchpad ? { t: "subir" } : { t: "subir", ...xy(puntoPC(g.x, g.y)) }); }
+      const [cx, cy] = centro();
+      RC.gesto = { tipo: "dos", d0: distancia(), z0: RC.zoom, y: cy, x: cx, t: Date.now(), movido: false, pellizco: false };
+      if (RC.zoom === 1 && !RC.touchpad) RC.foco = puntoPC(cx, cy);
+      return;
+    }
+    if (RC.dedos.size > 2) return;
+    const ahora = Date.now();
+    const g = RC.gesto = { tipo: "toque", x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY, t: ahora, tm: ahora,
+      arrastrable: RC.touchpad && ahora - RC.ultimoToque < 300 };
+    g.largo = setTimeout(() => {  // mantener presionado = clic derecho
+      if (RC.gesto !== g || g.tipo !== "toque") return;
+      g.tipo = "hecho";
+      if (RC.touchpad) clicTouchpad("derecho", [g.x, g.y]);
+      else { mandarControl({ t: "clic", ...xy(puntoPC(g.x, g.y)), boton: "derecho" }); marcarToque(g.x, g.y, true); navigator.vibrate?.(30); }
+    }, 550);
+  });
+
+  zona.addEventListener("pointermove", (e) => {
+    if (!RC.dedos.has(e.pointerId)) return;
+    RC.dedos.set(e.pointerId, [e.clientX, e.clientY]);
+    const g = RC.gesto; if (!g) return;
+    if (g.tipo === "dos" && RC.dedos.size === 2) {
+      const d = distancia(), [cx, cy] = centro();
+      if (!g.pellizco && Math.abs(d - g.d0) > 28) { g.pellizco = true; g.movido = true; }
+      if (g.pellizco) { RC.zoom = limitar(g.z0 * d / g.d0, 1, 4); ajustarControl(); return; }
+      const dy = cy - g.y, dx = cx - g.x;
+      if (!RC.touchpad && RC.zoom > 1) {  // toque directo con zoom: dos dedos mueven la vista
+        const r = $("#control-imagen").getBoundingClientRect();
+        RC.foco = [RC.foco[0] - dx / r.width, RC.foco[1] - dy / r.height]; g.x = cx; g.y = cy; g.movido = true;
+        ajustarControl(); return;
+      }
+      if (Math.abs(dy) >= 10) {
+        g.movido = true;
+        mandarControl({ t: "rueda", ...(RC.touchpad ? {} : xy(puntoPC(cx, cy))), cantidad: Math.round(dy * 6) });
+        g.y = cy;
+      }
+      return;
+    }
+    if (g.tipo === "toque" && Math.hypot(e.clientX - g.x, e.clientY - g.y) > 8) {  // empezó a moverse
+      clearTimeout(g.largo);
+      if (RC.touchpad) {
+        g.tipo = g.arrastrable ? "arrastre" : "mover";
+        if (g.arrastrable) { vaciarMovimiento(); mandarControl({ t: "bajar" }); navigator.vibrate?.(15); }
+      } else {
+        g.tipo = "arrastre"; mandarControl({ t: "bajar", ...xy(puntoPC(g.x, g.y)) });
+      }
+    }
+    if (RC.touchpad && (g.tipo === "mover" || g.tipo === "arrastre")) {
+      const ahora = Date.now();
+      moverRelativo(e.clientX - g.px, e.clientY - g.py, ahora - g.tm);
+      g.px = e.clientX; g.py = e.clientY; g.tm = ahora;
+    } else if (g.tipo === "arrastre" && Date.now() - RC.ultimoMov > 40) {
+      RC.ultimoMov = Date.now();
+      mandarControl({ t: "mover", ...xy(puntoPC(e.clientX, e.clientY)) });
+    }
+  });
+
+  const soltar = (e) => {
+    if (!RC.dedos.has(e.pointerId)) return;
+    RC.dedos.delete(e.pointerId);
+    const g = RC.gesto; if (!g) return;
+    if (g.tipo === "dos") {
+      // toque rápido con dos dedos (sin moverlos) = clic derecho
+      if (!RC.dedos.size) {
+        if (!g.movido && Date.now() - g.t < 350) {
+          if (RC.touchpad) clicTouchpad("derecho", [g.x, g.y]);
+          else { mandarControl({ t: "clic", ...xy(puntoPC(g.x, g.y)), boton: "derecho" }); marcarToque(g.x, g.y, true); }
+        }
+        RC.gesto = null;
+      }
+      return;
+    }
+    if (RC.dedos.size) return;
+    clearTimeout(g.largo); RC.gesto = null;
+    if (RC.touchpad) {
+      if (g.tipo === "arrastre") { vaciarMovimiento(); mandarControl({ t: "subir" }); }
+      else if (g.tipo === "toque") { clicTouchpad(); RC.ultimoToque = Date.now(); }
+      else vaciarMovimiento();
+      return;
+    }
+    const punto = xy(puntoPC(e.clientX, e.clientY));
+    if (g.tipo === "arrastre") mandarControl({ t: "subir", ...punto });
+    else if (g.tipo === "toque") {
+      const derecho = RC.derecho; RC.derecho = false; $("[data-c=derecho]").classList.remove("activo");
+      mandarControl({ t: "clic", ...xy(puntoPC(g.x, g.y)), boton: derecho ? "derecho" : "izquierdo" }); marcarToque(g.x, g.y, derecho);
+    }
+  };
+  zona.addEventListener("pointerup", soltar);
+  zona.addEventListener("pointercancel", soltar);
+  function xy([x, y]) { return { x, y }; }
+
+  // barra de arriba y dock de abajo
+  $("#control-remoto").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-c]"); if (!b) return;
+    const c = b.dataset.c;
+    if (c === "cerrar") cerrarControl();
+    else if (c === "teclado") alternarEscribir();
+    else if (c === "modo") { RC.touchpad = !RC.touchpad; guardar("touchpad", RC.touchpad); pintarControl(); mostrarAyudaControl(); ajustarControl(); }
+    else if (c === "hd") { RC.hd = !RC.hd; guardar("controlHd", RC.hd); pintarControl(); aviso("CONTROL REMOTO", RC.hd ? "Más nitidez (gasta más datos)" : "Calidad normal"); }
+    else if (c === "completa") pantallaCompleta();
+    else if (c === "ayuda") mostrarAyudaControl();
+    else if (c === "derecho") { RC.derecho = !RC.derecho; b.classList.toggle("activo", RC.derecho); if (RC.touchpad) { RC.derecho = false; clicTouchpad("derecho"); } }
+    else if (c === "doble") { if (RC.touchpad) { vaciarMovimiento(); mandarControl({ t: "doble" }); } else aviso("CONTROL REMOTO", "Toca dos veces seguidas donde quieras el doble clic."); }
+    else if (c === "mas") { $(".control-teclas").classList.toggle("oculto"); b.classList.toggle("activo"); setTimeout(ajustarControl, 50); }
+    else if (c === "dictar") dictar({
+      boton: b,
+      alParcial: (t) => burbujaControl("🎤 " + t),
+      alFinal: (t) => {
+        const caja = $("#control-texto");
+        if (!$("#control-escribir").classList.contains("oculto") && RC.escritura === "frase") {  // con la caja abierta: queda ahí para revisarlo
+          caja.value = (caja.value.trim() ? caja.value.trimEnd() + " " : "") + t; caja.dispatchEvent(new Event("input"));
+          burbujaControl("🎤 Revísalo y toca Enviar", 2000); return;
+        }
+        mandarControl({ t: "texto", v: t }); burbujaControl("⌨ Escrito en el PC: " + t, 2500);
+      },
+    });
+    else if (c === "jarvis") dictar({
+      boton: b,
+      alParcial: (t) => burbujaControl("◉ " + t),
+      alFinal: (t) => { burbujaControl("Tú: " + t); enviar(t, true); },
+    });
+  });
+  $(".control-teclas").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.t) mandarControl({ t: "tecla", v: b.dataset.t });
+    if (b.dataset.a) mandarControl({ t: "atajo", v: b.dataset.a });
+    if (b.dataset.t || b.dataset.a) navigator.vibrate?.(8);
+  });
+  // teclado del celular -> teclado del PC (tildes y ñ incluidas), viendo lo que escribes
+  const caja = $("#control-texto");
+  caja.addEventListener("input", () => {
+    if (RC.escritura === "vivo") cambioVivo();
+    caja.style.height = "auto"; caja.style.height = Math.min(caja.scrollHeight, 110) + "px";
+  });
+  caja.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    if (RC.escritura === "vivo") { mandarControl({ t: "tecla", v: "enter" }); limpiarCaja(); } else enviarCaja(true);
+  });
+  $("#ce-enviar").onclick = () => enviarCaja(false);
+  $("#control-escribir").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.m) { RC.escritura = b.dataset.m; guardar("controlEscritura", RC.escritura); limpiarCaja(); pintarEscribir(); caja.focus(); }
+    if (b.dataset.k === "listo") alternarEscribir(false);
+    if (b.dataset.t) { mandarControl({ t: "tecla", v: b.dataset.t }); navigator.vibrate?.(8); }
+    if (b.dataset.a) { mandarControl({ t: "atajo", v: b.dataset.a }); navigator.vibrate?.(8); }
+    if (b.dataset.t || b.dataset.a) caja.focus();  // el teclado del celular no se cierra al tocar un botón
+  });
+  // con el teclado del celular abierto, la vista se ajusta al espacio que queda (iPhone no lo hace solo)
+  const alto = () => {
+    const v = window.visualViewport, el = $("#control-remoto");
+    if (!v || !RC.ws) { el.style.height = el.style.top = ""; return; }
+    el.style.height = v.height + "px"; el.style.top = v.offsetTop + "px";
+    clearTimeout(alto.t); alto.t = setTimeout(ajustarControl, 80);
+  };
+  window.visualViewport?.addEventListener("resize", alto);
+  window.visualViewport?.addEventListener("scroll", alto);
+})();
+
+/* ---- escribir en el PC: «escribir y enviar» (revisas y lo mandas) o «en vivo» (cada letra va directo al PC) ---- */
+RC.escritura = guardado("controlEscritura", "frase");
+const CENTINELA = "​";  // en vivo: un carácter invisible al inicio para notar el ⌫ aunque la caja esté vacía
+let enviadoVivo = "";
+
+function alternarEscribir(abrir) {
+  const barra = $("#control-escribir");
+  abrir = abrir ?? barra.classList.contains("oculto");
+  barra.classList.toggle("oculto", !abrir);
+  $("#control-remoto").classList.toggle("escribiendo", abrir);
+  $("[data-c=teclado]").classList.toggle("activo", abrir);
+  if (abrir) { limpiarCaja(); pintarEscribir(); $("#control-texto").focus(); $("#control-ayuda").classList.add("fuera"); }
+  else $("#control-texto").blur();
+  setTimeout(ajustarControl, 120);
+}
+function pintarEscribir() {
+  const vivo = RC.escritura === "vivo";
+  document.querySelectorAll("#control-escribir [data-m]").forEach((b) => b.classList.toggle("activo", b.dataset.m === RC.escritura));
+  $("#ce-nota").textContent = vivo ? "cada letra va directo al PC" : "revísalo y toca Enviar";
+  $("#ce-enviar").classList.toggle("oculto", vivo);
+  $(".ce-enter").classList.toggle("oculto", vivo);
+  $("#control-texto").enterKeyHint = vivo ? "enter" : "send";
+}
+function limpiarCaja() {
+  const caja = $("#control-texto");
+  caja.value = RC.escritura === "vivo" ? CENTINELA : "";
+  enviadoVivo = "";
+  caja.style.height = "auto";
+}
+function mandarTexto(t) {  // los saltos de línea son Enter en el PC
+  t.split("\n").forEach((parte, i) => { if (i) mandarControl({ t: "tecla", v: "enter" }); if (parte) mandarControl({ t: "texto", v: parte }); });
+}
+function enviarCaja(desdeEnter) {
+  const caja = $("#control-texto"), t = caja.value;
+  if (!t.trim()) { if (desdeEnter) mandarControl({ t: "tecla", v: "enter" }); return; }
+  mandarTexto(t);
+  if (desdeEnter || $("#ce-con-enter").checked) mandarControl({ t: "tecla", v: "enter" });
+  burbujaControl("⌨ Enviado al PC: " + t.slice(0, 120), 2000);
+  navigator.vibrate?.(15);
+  limpiarCaja(); caja.focus();
+}
+// en vivo: se compara lo que hay en la caja con lo ya enviado; así también sirven el autocorrector y las sugerencias
+function cambioVivo() {
+  const caja = $("#control-texto");
+  let v = caja.value;
+  if (!v.startsWith(CENTINELA)) {  // borró el carácter invisible: era un ⌫ con la caja vacía
+    if (!v.replaceAll(CENTINELA, "") && !enviadoVivo) mandarControl({ t: "tecla", v: "borrar" });  // si borró todo de golpe, ya se borra abajo
+    v = CENTINELA + v.replaceAll(CENTINELA, "");
+    caja.value = v;
+  }
+  const nuevo = v.slice(1);
+  let i = 0;
+  while (i < enviadoVivo.length && i < nuevo.length && enviadoVivo[i] === nuevo[i]) i++;
+  for (let k = 0; k < enviadoVivo.length - i; k++) mandarControl({ t: "tecla", v: "borrar" });
+  if (nuevo.slice(i)) mandarTexto(nuevo.slice(i));
+  enviadoVivo = nuevo;
+  if (nuevo.includes("\n")) limpiarCaja();
+  else if (nuevo.length > 300) { enviadoVivo = nuevo.slice(-200); caja.value = CENTINELA + enviadoVivo; }
+}
+
+function pantallaCompleta() {
+  const el = $("#control-remoto");
+  if (document.fullscreenElement) { document.exitFullscreen?.().catch(() => {}); return; }
+  if (!el.requestFullscreen) { aviso("PANTALLA COMPLETA", "En iPhone: agrega JARVIS a la pantalla de inicio (Compartir → Agregar a inicio) y se verá sin barras."); return; }
+  el.requestFullscreen().then(() => screen.orientation?.lock?.("landscape").catch(() => {})).catch(() => {});
+}
+
+// globo sobre la pantalla del PC: lo que dictas y lo que responde JARVIS mientras manejas el PC
+function burbujaControl(texto, ms = 0) {
+  const b = $("#control-voz");
+  if (!b) return;
+  b.textContent = texto;
+  b.classList.remove("oculto");
+  clearTimeout(RC.vozT);
+  if (ms) RC.vozT = setTimeout(() => b.classList.add("oculto"), ms);
+}
+
+/* ---- dictado de una sola frase (control remoto, panel de Claude): no toca la escucha de «JARVIS» ---- */
+const dictado = { rec: null, grabador: null };
+function dictar({ boton, alParcial, alFinal, alTerminar }) {
+  iniciarAudio();
+  if (dictado.rec) { dictado.rec.stop(); return; }
+  if (dictado.grabador?.state === "recording") { dictado.grabador.stop(); return; }
+  callar();
+  escucha.pausada = true; escucha.directo = false; escucha.parar();
+  const terminar = () => {
+    dictado.rec = null; boton?.classList.remove("activo");
+    escucha.pausada = false; escucha.pintar();
+    if (escucha.continua) setTimeout(() => escucha.iniciar(), 300);
+    alTerminar?.();
+  };
+  boton?.classList.add("activo"); sonido.escuchar(); navigator.vibrate?.(15);
+  if (!SR) {  // sin reconocimiento del navegador: graba y transcribe en el PC (Whisper)
+    navigator.mediaDevices.getUserMedia({ audio: true }).then((flujo) => {
+      const trozos = [], g = dictado.grabador = new MediaRecorder(flujo);
+      g.ondataavailable = (e) => trozos.push(e.data);
+      g.onstop = async () => {
+        flujo.getTracks().forEach((t) => t.stop());
+        alParcial?.("Transcribiendo…");
+        const fd = new FormData(); fd.append("audio", new Blob(trozos, { type: "audio/webm" }), "voz.webm");
+        const r = await fetch("/api/stt", { method: "POST", body: fd }).then((x) => x.json()).catch(() => ({}));
+        dictado.grabador = null; terminar();
+        if (r.texto) alFinal(r.texto.trim()); else aviso("VOZ", r.error || "No pude transcribir.");
+      };
+      g.start(); alParcial?.("Te escucho… toca otra vez para terminar");
+    }).catch(() => { terminar(); aviso("MICRÓFONO", "No tengo acceso al micrófono."); });
+    return;
+  }
+  const r = dictado.rec = new SR();
+  r.lang = "es-CO"; r.continuous = false; r.interimResults = true; r.maxAlternatives = 1;
+  let final = "";
+  r.onresult = (e) => {
+    let parcial = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript; else parcial += e.results[i][0].transcript;
+    }
+    alParcial?.((final + " " + parcial).trim() || "Te escucho…");
+  };
+  r.onerror = (e) => { if (e.error === "not-allowed" || e.error === "service-not-allowed") aviso("MICRÓFONO", "El navegador bloqueó el micrófono. Permítelo en la barra de direcciones."); };
+  r.onend = () => { terminar(); if (final.trim()) alFinal(final.trim()); };
+  alParcial?.("Te escucho…");
+  try { r.start(); } catch { terminar(); }
+}
+
+/* ---- avisos en el celular aunque JARVIS esté cerrado (push) ---- */
+async function activarAvisos() {
+  const iOS = /iPhone|iPad/i.test(navigator.userAgent);
+  if (!("PushManager" in window) || !("Notification" in window)) {
+    aviso("AVISOS", iOS ? "En iPhone primero agrega JARVIS a la pantalla de inicio (Compartir → Agregar a inicio), ábrelo desde ahí y vuelve a tocar este botón."
+      : "Este navegador no permite avisos. Usa Chrome.", true);
+    return;
+  }
+  if (await Notification.requestPermission() !== "granted") {
+    aviso("AVISOS", "Sin permiso no puedo avisarte. Actívalo en los ajustes del navegador para este sitio.", true);
+    return;
+  }
+  try {
+    const { clave, error } = await fetch("/api/push/clave").then((r) => r.json());
+    if (error) throw new Error(error);
+    const binaria = Uint8Array.from(atob(clave.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((clave.length + 3) % 4)), (c) => c.charCodeAt(0));
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: binaria });
+    const r = await fetch("/api/push/suscribir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sub }) }).then((x) => x.json());
+    if (r.error) throw new Error(r.error);
+    aviso("AVISOS", r.prueba ? "Listo: te debió llegar un aviso de prueba." : "Quedó activado, pero el aviso de prueba no salió: revisa la conexión del PC.");
+  } catch (e) {
+    aviso("AVISOS", "No pude activarlos: " + e.message, true);
+  }
+}
+
+if (ES_REMOTO && "serviceWorker" in navigator) { $("#btn-avisos").classList.remove("oculto"); $("#btn-avisos").onclick = activarAvisos; }
+fetch("/api/estado").then((r) => r.json()).then((e) => {
+  if (ES_REMOTO && e.control) { $("#btn-control").classList.remove("oculto"); $("#btn-control").onclick = () => { $("#ajustes").classList.add("oculto"); abrirControl(); }; }
+}).catch(() => {});

@@ -13,8 +13,8 @@ log = logging.getLogger("jarvis.nodos")
 
 
 class Nodo:
-    def __init__(self, ws, nombre: str, herramientas: list[dict]):
-        self.ws, self.nombre = ws, nombre
+    def __init__(self, ws, nombre: str, herramientas: list[dict], control: bool = False):
+        self.ws, self.nombre, self.control = ws, nombre, control
         self.herramientas = {h["nombre"]: h for h in herramientas}  # nombre -> {nombre, desc, params, req, peligrosa}
         self.pendientes: dict[str, asyncio.Future] = {}
 
@@ -24,9 +24,9 @@ class Registro:
         self.nodos: dict[str, Nodo] = {}
 
     # ----- conexión -----
-    async def atender(self, ws, nombre: str, herramientas: list[dict]):
+    async def atender(self, ws, nombre: str, herramientas: list[dict], control: bool = False):
         """Se queda escuchando al nodo hasta que se desconecte."""
-        nodo = Nodo(ws, nombre, herramientas)
+        nodo = Nodo(ws, nombre, herramientas, control)
         anterior = self.nodos.get(nombre)
         if anterior:
             for f in anterior.pendientes.values():
@@ -75,6 +75,25 @@ class Registro:
             return f"El PC tardó más de {int(timeout)} s en responder."
         except Exception as e:  # noqa: BLE001
             return f"No pude hablar con el PC: {e}"
+        finally:
+            nodo.pendientes.pop(clave, None)
+
+    # ----- control remoto: canal aparte de las herramientas, la IA no puede usarlo -----
+    def hay_control(self) -> bool:
+        return any(n.control for n in self.nodos.values())
+
+    async def control(self, m: dict) -> dict:
+        nodo = next((n for n in self.nodos.values() if n.control), None)
+        if not nodo:
+            return {"error": "Ningún PC tiene el control remoto prendido."}
+        clave = uuid.uuid4().hex
+        fut = asyncio.get_running_loop().create_future()
+        nodo.pendientes[clave] = fut
+        try:
+            await nodo.ws.send_text(json.dumps({"type": "control", "id": clave, "m": m}, ensure_ascii=False))
+            return json.loads(await asyncio.wait_for(fut, 8))
+        except (asyncio.TimeoutError, ValueError, RuntimeError) as e:
+            return {"error": f"El PC no respondió: {type(e).__name__}"}
         finally:
             nodo.pendientes.pop(clave, None)
 
