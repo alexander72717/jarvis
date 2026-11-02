@@ -38,6 +38,7 @@ user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
 user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
 user32.SetWindowRgn.argtypes = [wintypes.HWND, wintypes.HANDLE, wintypes.BOOL]
+user32.IsZoomed.argtypes = [wintypes.HWND]
 gdi32.CreateRoundRectRgn.restype = wintypes.HANDLE
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)  # coordenadas en píxeles reales, iguales a las de Windows
@@ -388,7 +389,7 @@ class Lateral:
         if not hwnd:
             return
         x, y, w, h = self.rect_panel()
-        if user32.IsIconic(hwnd):
+        if user32.IsIconic(hwnd) or user32.IsZoomed(hwnd):  # Edge recuerda «maximizada» en su perfil
             user32.ShowWindow(hwnd, SW_RESTORE)
         self.preparar_ventana(hwnd, w, h)
         inicio = self.x_guardado(w)
@@ -439,6 +440,12 @@ class Lateral:
             if self.abierto:
                 if not (self.hwnd and user32.IsWindow(self.hwnd)) or not user32.IsWindowVisible(self.hwnd):
                     self.abierto = False  # lo cerraron (Alt+F4)
+                elif user32.IsZoomed(self.hwnd):
+                    # maximizada (Win+↑, arrastrar al borde): Edge encoge su contenido y no cabe en el panel
+                    user32.ShowWindow(self.hwnd, SW_RESTORE)
+                    x, y, w, h = self.rect_panel()
+                    self.preparar_ventana(self.hwnd, w, h)
+                    self.mover_panel_a(x, y, w, h)
                 elif not self.prefs["fijo"] and time.time() - self.mostrado > 1.5:  # al abrir, Edge a veces pasa el foco a otra ventana suya un instante
                     activa = user32.GetForegroundWindow()
                     propia = activa in (self.hwnd, self.raiz.winfo_id(), user32.GetParent(self.raiz.winfo_id()))
