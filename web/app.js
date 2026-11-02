@@ -304,15 +304,55 @@ function dibujarReactor(dt) {
   g2.clearRect(0, 0, w, h);
   g2.save(); g2.translate(cx, cy);
 
-  if (!S.hud) {  // interfaz limpia: un orbe que respira; el color y el pulso dicen qué está haciendo
-    const r = R * (0.3 + 0.012 * Math.sin(tiempo * 1.4) + nivel * 0.14);
-    const luz = g2.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 2.6);
-    luz.addColorStop(0, rgba(C, 0.14 + nivel * 0.25)); luz.addColorStop(1, rgba(C, 0));
-    g2.fillStyle = luz; g2.beginPath(); g2.arc(0, 0, r * 2.6, 0, Math.PI * 2); g2.fill();
-    g2.fillStyle = rgba(C, 0.9); g2.beginPath(); g2.arc(0, 0, r, 0, Math.PI * 2); g2.fill();
+  if (!S.hud) {  // interfaz limpia: una esfera viva; el color y el pulso dicen qué está haciendo
+    const r = R * (0.34 + 0.01 * Math.sin(tiempo * 1.4) + nivel * 0.1);
+    const claro = C.map((v) => v + (255 - v) * 0.65), hondo = C.map((v) => v * 0.16);
+    const luz = g2.createRadialGradient(0, 0, r * 0.7, 0, 0, r * 2.5);
+    luz.addColorStop(0, rgba(C, 0.2 + nivel * 0.25)); luz.addColorStop(1, rgba(C, 0));
+    g2.fillStyle = luz; g2.beginPath(); g2.arc(0, 0, r * 2.5, 0, Math.PI * 2); g2.fill();
+
+    // anillos finos en órbita, por detrás y por delante de la esfera
+    const anillo = (inclina, fase, delante) => {
+      const giro = tiempo * 0.35 * vel + fase, ra = r * 1.5, rb = r * 0.42;
+      g2.save(); g2.rotate(inclina); g2.strokeStyle = rgba(C, 0.28); g2.lineWidth = Math.max(1, R * 0.006);
+      g2.beginPath(); g2.ellipse(0, 0, ra, rb, 0, delante ? 0 : Math.PI, delante ? Math.PI : Math.PI * 2); g2.stroke();
+      const ax = Math.cos(giro) * ra, ay = Math.sin(giro) * rb;
+      if (ay >= 0 === delante) { g2.fillStyle = rgba(claro, 0.9); g2.beginPath(); g2.arc(ax, ay, Math.max(1.5, R * 0.016), 0, Math.PI * 2); g2.fill(); }
+      g2.restore();
+    };
+    anillo(-0.42, 0, false); anillo(0.7, 2.1, false);
+
+    // cuerpo: luz arriba a la izquierda y sombra al borde opuesto
+    const cuerpo = g2.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.05, 0, 0, r * 1.05);
+    cuerpo.addColorStop(0, rgba(claro, 1)); cuerpo.addColorStop(0.35, rgba(C, 1)); cuerpo.addColorStop(0.8, rgba(C.map((v) => v * 0.42), 1)); cuerpo.addColorStop(1, rgba(hondo, 1));
+    g2.fillStyle = cuerpo; g2.beginPath(); g2.arc(0, 0, r, 0, Math.PI * 2); g2.fill();
+
+    // energía moviéndose por dentro
+    g2.save(); g2.beginPath(); g2.arc(0, 0, r, 0, Math.PI * 2); g2.clip();
+    g2.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 3; i++) {
+      const a = tiempo * (0.5 + i * 0.23) * vel + i * 2.1, d = r * (0.32 + 0.16 * Math.sin(tiempo * 0.7 + i));
+      const x = Math.cos(a) * d, y = Math.sin(a * 1.3) * d, t = r * (0.55 + nivel * 0.25);
+      const n = g2.createRadialGradient(x, y, 0, x, y, t);
+      n.addColorStop(0, rgba(claro, 0.2 + nivel * 0.3)); n.addColorStop(1, rgba(C, 0));
+      g2.fillStyle = n; g2.fillRect(-r, -r, r * 2, r * 2);
+    }
+    g2.restore();
+
+    // borde encendido y brillo
+    const borde = g2.createRadialGradient(0, 0, r * 0.78, 0, 0, r);
+    borde.addColorStop(0, rgba(C, 0)); borde.addColorStop(1, rgba(claro, 0.5));
+    g2.fillStyle = borde; g2.beginPath(); g2.arc(0, 0, r, 0, Math.PI * 2); g2.fill();
+    g2.save(); g2.translate(-r * 0.38, -r * 0.46); g2.rotate(-0.6); g2.scale(1, 0.6);
+    const brillo = g2.createRadialGradient(0, 0, 0, 0, 0, r * 0.36);
+    brillo.addColorStop(0, "rgba(255,255,255,.75)"); brillo.addColorStop(1, "rgba(255,255,255,0)");
+    g2.fillStyle = brillo; g2.beginPath(); g2.arc(0, 0, r * 0.36, 0, Math.PI * 2); g2.fill();
+    g2.restore();
+
+    anillo(-0.42, 0, true); anillo(0.7, 2.1, true);
     if (S.modo === "pensando" || S.modo === "herramienta") {
       g2.strokeStyle = rgba(C, 0.8); g2.lineWidth = Math.max(1.5, R * 0.012); g2.lineCap = "round";
-      g2.beginPath(); g2.arc(0, 0, r * 1.45, tiempo * 3, tiempo * 3 + 1.4); g2.stroke();
+      g2.beginPath(); g2.arc(0, 0, r * 1.75, tiempo * 3, tiempo * 3 + 1.4); g2.stroke();
     }
     g2.restore();
     return;
