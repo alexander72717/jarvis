@@ -44,7 +44,7 @@ if (LATERAL) {
 const S = {
   ws: null, modo: "espera", info: null, ia: null,
   vozActiva: guardado("voz", true), sonidos: guardado("sonidos", true),
-  voz: guardado("vozId", null), velocidad: guardado("velocidad", 20),
+  voz: guardado("vozId", null), velocidad: guardado("velocidadVoz", 5),
   generando: false, burbuja: null, textoActual: "", ptrVoz: 0, enCodigo: false,
   ultimoProveedor: null, adjuntos: [], confirmacion: null, provActual: null,
   hud: guardado("hud", false),
@@ -90,7 +90,9 @@ let hablando = false;
 
 function limpiarParaVoz(t) {
   return t.replace(/```[\s\S]*?```/g, " ").replace(/`([^`]*)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/https?:\/\/(www\.)?([^\/\s]+)\S*/g, "$2").replace(/[*_#>|~]/g, "").replace(/\s+/g, " ").trim();
+    .replace(/https?:\/\/(www\.)?([^\/\s]+)\S*/g, "$2").replace(/[*_#>|~]/g, "")
+    .replace(/(\d+)\s*h\s*(\d+)\s*min\S*/g, "$1 horas y $2 minutos").replace(/(\d)\s*%/g, "$1 por ciento").replace(/(\d)\s*°\s*C\b/g, "$1 grados")
+    .replace(/\s+/g, " ").trim();
 }
 
 // Edge trae las mismas voces neuronales de Microsoft: hablar con ellas empieza en ~0,1 s,
@@ -1275,7 +1277,7 @@ function iniciarUI() {
   document.body.classList.toggle("ligero", S.ligero);
   $("#chk-sonidos").onchange = (e) => { S.sonidos = e.target.checked; guardar("sonidos", S.sonidos); };
   $("#sel-voz").onchange = (e) => { S.voz = e.target.value; guardar("vozId", S.voz); decir("Así sonará mi voz a partir de ahora."); };
-  $("#vel-voz").oninput = (e) => { S.velocidad = +e.target.value; guardar("velocidad", S.velocidad); $("#vel-txt").textContent = (S.velocidad >= 0 ? "+" : "") + S.velocidad + "%"; };
+  $("#vel-voz").oninput = (e) => { S.velocidad = +e.target.value; guardar("velocidadVoz", S.velocidad); $("#vel-txt").textContent = (S.velocidad >= 0 ? "+" : "") + S.velocidad + "%"; };
   $("#btn-recargar").onclick = async () => { aviso("PROVEEDORES", "Releyendo .env y descubriendo modelos…"); const e = await fetch("/api/recargar", { method: "POST" }).then((r) => r.json()); pintarIA(e); aviso("PROVEEDORES", `${e.total} ranuras disponibles.`); };
   $("#btn-enfriar").onclick = async () => pintarIA(await fetch("/api/reiniciar_enfriamientos", { method: "POST" }).then((r) => r.json()));
   const nuevaConversacion = async () => { await fetch("/api/nueva_conversacion", { method: "POST" }); chat.innerHTML = ""; actualizarVacio(); subtitulo("Conversación nueva. La memoria a largo plazo se conserva."); };

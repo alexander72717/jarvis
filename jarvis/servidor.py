@@ -266,6 +266,26 @@ async def anunciar_tarea(texto: str):
         await telegram.notificar(texto)
 
 
+async def resumen_en_pantallas():
+    from . import tareas as tareas_programadas
+
+    async def decir(texto: str):  # está frente al PC: no hace falta que suene también el celular
+        memoria.guardar_mensaje(SESION_WEB, {"role": "assistant", "content": texto})
+        await a_las_pantallas_del_pc(texto)
+
+    await tareas_programadas.correr({"id": "saludo", "pedido": tareas_programadas.RESUMEN}, agente, decir)
+
+
+async def saludar_al_llegar():
+    """Primera vez del día frente al PC: el panel sale y JARVIS cuenta lo del día."""
+    if _lateral_vivo():
+        LATERAL["abrir"] += 1
+    if ENLACE.conectado:
+        await ENLACE.pedir("POST", "/api/resumen_ahora")
+    else:
+        await resumen_en_pantallas()
+
+
 async def completar_rapido(mensajes: list, nivel: str = "rapido", vision: bool = False) -> str:
     """Los vigilantes del PC piensan en el cerebro si están enlazados: ahí están las llaves."""
     if ENLACE.conectado:
@@ -322,7 +342,7 @@ async def vida(app):
         if config.env("PROACTIVO", "1") != "0":
             tareas.append(asyncio.create_task(proactivo.vigilar(
                 completar_rapido, modo_actual, decir_proactivo, lambda: any(PANTALLAS.get(w) != "celular" for w in clientes),
-                lambda frase: avisar_pantallas(frase, forzar=True))))
+                lambda frase: avisar_pantallas(frase, forzar=True), saludar_al_llegar)))
     if telegram.activo:
         tareas.append(asyncio.create_task(telegram.bucle()))
     log.info("JARVIS listo en http://%s:%s", config.HOST, config.PUERTO)
@@ -756,6 +776,12 @@ async def bajar_respaldo():
 
     ultimo = respaldo.ultimo()
     return FileResponse(ultimo, filename=ultimo.name) if ultimo else JSONResponse({"error": "todavía no hay copias"}, 404)
+
+
+@app.post("/api/resumen_ahora")
+async def resumen_ahora():
+    asyncio.create_task(resumen_en_pantallas())
+    return {"ok": True}
 
 
 @app.post("/api/rapido")

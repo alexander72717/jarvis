@@ -482,4 +482,6 @@ if __name__ == "__main__":
     ctypes.windll.kernel32.CreateMutexW(None, False, "JARVIS.Lateral")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         sys.exit(0)
+    if not nucleo_vivo():  # al iniciar Windows no hay nadie que lo arranque
+        arrancar_nucleo()
     Lateral().correr(abrir="--cerrado" not in sys.argv)

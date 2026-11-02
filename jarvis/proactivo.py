@@ -87,6 +87,11 @@ def _mas_pesado(campo: str) -> str:
     return mejor[0] if mejor else "?"
 
 
+def toca_saludo(ultimo: str | None, ahora: datetime, presente: bool, modo: str | None) -> bool:
+    """El resumen llega cuando se sienta al PC por la mañana, no a una hora fija, y solo una vez al día."""
+    return presente and 5 <= ahora.hour < 13 and ultimo != ahora.strftime("%Y-%m-%d") and modo not in ("juego", "noche") and not enfoque_activo()
+
+
 def enfoque_activo() -> bool:
     from . import enfoque
 
@@ -256,7 +261,7 @@ def charlo(texto: str):
     VIGILANTE.respuesta_usuario(texto)
 
 
-async def vigilar(completar, modo_actual, decir, hay_pantalla_pc, avisar_lejos):
+async def vigilar(completar, modo_actual, decir, hay_pantalla_pc, avisar_lejos, saludar):
     """Bucle de fondo. Si usted está usando el PC, decir(frase) se lo dice ahí; si no está, solo lo urgente
     le llega al celular con avisar_lejos(frase), y lo demás espera a que vuelva."""
     await asyncio.sleep(90)  # que arranque tranquilo
@@ -268,7 +273,12 @@ async def vigilar(completar, modo_actual, decir, hay_pantalla_pc, avisar_lejos):
             v = await asyncio.to_thread(ventana_activa)
             presente = v.get("quieto", 1e9) < 300  # tocó teclado o ratón hace menos de 5 min
             ocupado = time.time() - VIGILANTE.ultima_charla < 120  # en plena conversación no se interrumpe
-            modo = await modo_actual() if notas else None
+            pendiente = VIGILANTE.estado.get("saludo") != datetime.now().strftime("%Y-%m-%d")
+            modo = await modo_actual() if notas or pendiente else None
+            if hay_pantalla_pc() and toca_saludo(VIGILANTE.estado.get("saludo"), datetime.now(), presente, modo):
+                VIGILANTE.estado["saludo"] = datetime.now().strftime("%Y-%m-%d")
+                VIGILANTE._guardar()
+                await saludar()
             for clave, urgencia, nota in sorted(notas, key=lambda n: -n[1]):
                 if not VIGILANTE.puede(clave, urgencia, ocupado, presente, modo):
                     continue

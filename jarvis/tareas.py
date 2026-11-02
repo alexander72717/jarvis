@@ -21,8 +21,9 @@ MAXIMO = 30
 GRACIA = 60  # minutos: si el cerebro estaba reiniciándose a la hora justa, igual se hace
 LIMITE = 180  # segundos que puede tardar una tarea
 DIAS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
-RESUMEN = ("Haz mi resumen de la mañana: la fecha, el clima de hoy, mis recordatorios pendientes, el estado de mis impresoras 3D "
-           "si el PC está encendido, y una sola frase con lo más importante del día. Sin listas, para oírlo en voz alta.")
+RESUMEN = ("Haz mi resumen de la mañana como quien saluda a un amigo: el clima de hoy, mis recordatorios, lo pendiente de mis proyectos con "
+           "proyecto_ver y mis impresoras 3D si el PC está encendido. Solo lo que importe, máximo cuatro frases para oír, sin listas, "
+           "y termina preguntando por dónde quiero empezar.")
 CIERRE = ("Haz mi cierre del día: mira registro_de_acciones de hoy y proyecto_ver, y cuéntame en pocas frases qué se hizo hoy, "
           "qué quedó pendiente y qué sería lo primero de mañana. Si hoy no hubo actividad, dilo en una frase.")
 ANUNCIAR = None  # async fn(texto): lo conecta el servidor (pantallas, celular y Telegram)
@@ -143,7 +144,7 @@ async def tareas_programadas(ctx, cancelar=None):
     return "\n".join(f"- #{t['id']}: {_texto_dias(t['dias'])} a las {t['hora']}: {t['pedido'][:80]}" for t in lista)
 
 
-async def correr(t: dict, agente):
+async def correr(t: dict, agente, anunciar=None):
     async def nada(_):
         pass
 
@@ -156,8 +157,9 @@ async def correr(t: dict, agente):
     except Exception as e:  # noqa: BLE001 - una tarea rota no tumba las demás
         log.warning("tarea %s: %s: %s", t["id"], type(e).__name__, e)
         final = f"No pude hacer la tarea programada «{t['pedido'][:60]}»."
-    if ANUNCIAR and final.strip():
-        await ANUNCIAR(final)
+    anunciar = anunciar or ANUNCIAR
+    if anunciar and final.strip():
+        await anunciar(final)
 
 
 async def vigilar(agente):

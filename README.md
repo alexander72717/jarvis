@@ -221,6 +221,10 @@ Ideas del fork Maicol, adaptadas al cerebro en el servidor y sin sus permisos fl
 - **Habilidades:** lo que Claude Code resuelve una vez queda como script en `data/habilidades/`. Cada ejecución pide confirmación.
 - **Control remoto:** pantalla del PC en vivo con ratón y teclado desde un celular emparejado. **Apagado por defecto:** se prende con ⚙ → «Prender el control remoto» o diciendo «prende el control remoto» (pide confirmación). Queda guardado como `CONTROL_REMOTO` en el `.env` del PC, y las pantallas del PC avisan cuando alguien lo toma. La IA solo puede abrir el panel, no mover nada.
 
+## Para usarlo de verdad cada día
+
+JARVIS arranca solo con Windows: `scripts/instalar_inicio.ps1` lo deja en la pestaña del borde, sin ventanas (con `-Quitar` se deshace). La primera vez que te sientas al PC por la mañana, el panel sale y te cuenta lo del día, una sola vez y nunca en modo juego o enfoque.
+
 ## Tareas programadas y resumen de la mañana
 
 «Todos los días a las 7 dame mi resumen», «los lunes a las 9 revisa cómo van las impresoras». El cerebro las hace solo y te avisa en las pantallas y en el celular.

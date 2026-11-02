@@ -17,7 +17,20 @@ class RouterFalso:
         return self.respuesta
 
 
+def probar_saludo():
+    from datetime import datetime
+
+    manana = datetime(2026, 11, 2, 8, 30)
+    assert p.toca_saludo(None, manana, True, None)
+    assert not p.toca_saludo("2026-11-02", manana, True, None), "una vez al día"
+    assert not p.toca_saludo(None, manana, False, None), "solo si está frente al PC"
+    assert not p.toca_saludo(None, manana.replace(hour=15), True, None), "no por la tarde"
+    assert not p.toca_saludo(None, manana, True, "juego"), "no en pleno juego"
+    print("✓ saluda una vez, al llegar por la mañana")
+
+
 def main():
+    probar_saludo()
 
     p.ESTADO = Path(tempfile.mkdtemp()) / "proactivo.json"
     v = p.Vigilante()
